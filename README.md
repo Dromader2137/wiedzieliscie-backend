@@ -1,2 +1,4 @@
 # wiedzieliscie-backend
-Backend for Wiedzieliście project written in Rust
+## Rules
+- commit names have to be in kebab case
+- one branch per one feature
