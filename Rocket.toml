@@ -1,0 +1,6 @@
+[default.databases.db]
+url = "db.sqlite"
+min_connections = 16
+max_connections = 1024
+connct_timeout = 5
+idle_timeout = 120

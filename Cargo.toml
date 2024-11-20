@@ -7,4 +7,8 @@ edition = "2021"
 resend-rs = "0.9.1"
 rocket = { version = "0.5.1", features = ["json"]}
 tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread"] }
-sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite" ] }
+sqlx = { version = "0.7.4", features = [ "runtime-tokio", "sqlite" ] }
+
+[dependencies.rocket_db_pools]
+version = "0.2.0"
+features = ["sqlx_sqlite"]
