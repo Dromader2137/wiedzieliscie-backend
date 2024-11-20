@@ -1,4 +1,4 @@
-use rocket::{http::Status, serde::{json::{Value, Json, json}, Deserialize, Serialize}};
+use rocket::{http::Status, serde::{json::{Value, Json, json}, Deserialize}};
 use rocket_db_pools::Connection;
 use sqlx::{query, Row, SqliteConnection};
 
@@ -57,10 +57,7 @@ async fn create_user<'a>(db: &mut SqliteConnection, id: u32, data: RegisterData<
         .bind(data.gender == 'm')
         .execute(db).await {
         Ok(_) => Ok(()),
-        Err(_) => {
-            Err("Failed to insert user into the database")
-
-        }
+        Err(_) => Err("Failed to insert user into the database")
     }
 }
 

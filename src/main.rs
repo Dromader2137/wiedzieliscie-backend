@@ -1,21 +1,29 @@
-use rocket_db_pools::{Connection, Database};
+use db::create_tables;
+use rocket::fairing::AdHoc;
+use rocket_db_pools::{Database, Pool};
 
-#[macro_use] extern crate rocket;
+#[macro_use]
+extern crate rocket;
 
+pub mod db;
 pub mod user;
 
 #[derive(Database)]
 #[database("db")]
 pub struct DB(sqlx::SqlitePool);
 
-pub async fn create_tables(db: Connection<DB>) {
-    let mut db = db.into_inner();
-
-    
-
-}
-
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/", routes![user::register::auth_register])
+    let db = DB::init();
+
+    rocket::build()
+        .attach(db)
+        .attach(AdHoc::on_liftoff("Startup Check", |rocket| {
+            Box::pin(async move {
+                let DB(db) = DB::fetch(rocket).expect("Failed to init the database");
+                let connection = db.get().await.expect("Failed to init the database");
+                create_tables(connection).await;
+            })
+        }))
+        .mount("/", routes![user::register::auth_register])
 }
