@@ -2,3 +2,4 @@
 db.*
 run.sh
 test.sh
+Cargo.lock
