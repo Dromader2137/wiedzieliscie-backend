@@ -223,6 +223,8 @@ pub async fn auth_verify(mut db: Connection<DB>, token: &str) -> RawHtml<String>
 
 #[cfg(test)]
 mod register_tests {
+    use std::env;
+
     use rocket::http::{ContentType, Status};
     use rocket::local::asynchronous::Client;
     use rocket::serde::json::json;
@@ -233,6 +235,8 @@ mod register_tests {
 
     #[rocket::async_test]
     async fn register_with_verification() {
+        env::set_var("WIEDZIELISCIE_BACKEND_RESET_DB", "1");
+
         let client = Client::tracked(rocket())
             .await
             .expect("Failed to create client");
@@ -281,6 +285,8 @@ mod register_tests {
 
     #[rocket::async_test]
     async fn register_without_verification() {
+        env::set_var("WIEDZIELISCIE_BACKEND_RESET_DB", "1");
+
         let client = Client::tracked(rocket())
             .await
             .expect("Failed to create client");
