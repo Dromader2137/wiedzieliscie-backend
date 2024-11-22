@@ -25,5 +25,9 @@ fn rocket() -> _ {
                 create_tables(connection).await;
             })
         }))
-        .mount("/", routes![user::register::auth_register])
+        .mount("/", routes![
+            user::register::auth_register,
+            user::register::auth_resend_verification,
+            user::register::auth_verify
+        ])
 }

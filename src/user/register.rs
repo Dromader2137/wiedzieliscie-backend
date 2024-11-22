@@ -1,8 +1,12 @@
-use std::{env, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{
+    env,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
 use rocket::{
     http::Status,
+    response::content::RawHtml,
     serde::{
         json::{json, Json, Value},
         Deserialize,
@@ -14,7 +18,7 @@ use uuid::Uuid;
 
 use crate::DB;
 
-use super::get_user_by_id;
+use super::{get_user_by_auth_token, get_user_by_id, update_user_verification_status};
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -60,9 +64,12 @@ async fn create_user(
     db: &mut SqliteConnection,
     id: u32,
     data: &RegisterData<'_>,
-    token: &str
+    token: &str,
 ) -> Result<(), String> {
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time").as_secs();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs();
 
     match query("INSERT INTO 
                 users 
@@ -92,15 +99,16 @@ async fn send_registration_email(email: &str, verification_token: &str) -> Resul
     let subject = "Confirm your registration to WiedzieLIŚCIE";
     let verification_link = match env::var("WIEDZIELISCIE_BACKEND_URL") {
         Ok(val) => val + "/auth/verify/" + verification_token,
-        Err(_) => return Err("Url not found".to_owned())
+        Err(_) => return Err("Url not found".to_owned()),
     };
 
-    let email = CreateEmailBaseOptions::new(from, [email], subject)
-        .with_html(&format!(
-        "<body>
-            <a href=\"{}\">Verify (if link doesnt work copy this: {})</a>
-        </body>"
-        , verification_link, verification_link));
+    let email = CreateEmailBaseOptions::new(from, [email], subject).with_html(&format!(
+        "
+            <a href=\"{}\">Click this to verify</a>
+            <p>If the link above doesn't work just copy this and paste it into a new browser tab: {}</p>
+        ",
+        verification_link, verification_link
+    ));
 
     if let Err(err) = resend.emails.send(email).await {
         Err(format!("Failed to send email: {}", err))
@@ -110,7 +118,10 @@ async fn send_registration_email(email: &str, verification_token: &str) -> Resul
 }
 
 #[post("/auth/register", format = "json", data = "<data>")]
-pub async fn auth_register(mut db: Connection<DB>, data: Json<RegisterData<'_>>) -> (Status, Value) {
+pub async fn auth_register(
+    mut db: Connection<DB>,
+    data: Json<RegisterData<'_>>,
+) -> (Status, Value) {
     let data = data.into_inner();
 
     match email_taken(&mut db, data.email).await {
@@ -144,11 +155,14 @@ pub async fn auth_register(mut db: Connection<DB>, data: Json<RegisterData<'_>>)
 pub async fn auth_resend_verification(mut db: Connection<DB>, account_id: u32) -> (Status, Value) {
     let user = match get_user_by_id(&mut db, account_id).await {
         Ok(val) => val,
-        Err(err) => return (Status::NotFound, json!({"error": err}))
+        Err(err) => return (Status::NotFound, json!({"error": err})),
     };
 
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time").as_secs() as i64;
-    
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs() as i64;
+
     if timestamp - user.last_verification < 60 {
         return (Status::BadRequest, json!({"error": "Too fast"}));
     }
@@ -156,27 +170,78 @@ pub async fn auth_resend_verification(mut db: Connection<DB>, account_id: u32) -
     if let Err(err) = send_registration_email(&user.email, &user.verification_tokrn).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
-    
+
     (Status::Ok, json!({}))
+}
+
+fn get_verification_page(title: &str, message: &str) -> String {
+    format!(
+        "
+            <head>
+            <meta charset=\"utf-8\" />
+            <title>WiedzieLIŚCIE verification</title>
+            </head>
+            <body style=\"background-color: black; color: white;\">
+            <div style=\"display: flex; justify-content: center; align-items: center; text-align: center; min-height: 100vh; flex-direction: column\">
+            <h1>{}</h1> 
+            <p>{}</p>
+            </div>
+            </body>
+    ",
+        title, message
+    )
+}
+
+#[get("/auth/verify/<token>")]
+pub async fn auth_verify(mut db: Connection<DB>, token: &str) -> RawHtml<String> {
+    let user = match get_user_by_auth_token(&mut db, token).await {
+        Ok(val) => val,
+        Err(err) => return RawHtml(get_verification_page(&"Verification failed", &err)),
+    };
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs() as i64;
+
+    if user.verification_tokrn != token || timestamp - user.last_verification > 3600 {
+        return RawHtml(get_verification_page(
+            &"Verification failed",
+            &"Token invalid",
+        ));
+    }
+
+    if let Err(err) = update_user_verification_status(&mut db, user.user_id).await {
+        return RawHtml(get_verification_page(&"Verification failed", &err));
+    }
+
+    RawHtml(get_verification_page(
+        &"Verification successful",
+        &"You can now close this page and return to the app",
+    ))
 }
 
 #[cfg(test)]
 mod register_tests {
-    use rocket::http::ContentType;
-    use rocket::local::blocking::Client;
+    use rocket::http::{ContentType, Status};
+    use rocket::local::asynchronous::Client;
     use rocket::serde::json::json;
+    use rocket_db_pools::{Database, Pool};
 
-    use crate::rocket;
+    use crate::{rocket, user::get_user_by_id, DB};
+    use super::get_verification_page;
 
-    #[test]
-    fn register_normal() {
-        let client = Client::tracked(rocket()).expect("Failed to create client");
+    #[rocket::async_test]
+    async fn register_with_verification() {
+        let client = Client::tracked(rocket())
+            .await
+            .expect("Failed to create client");
         let response = client
             .post(uri!("/auth/register"))
             .header(ContentType::JSON)
             .body(
                 json!({
-                    "email": "dromader2137@proton.me",
+                    "email": "wiedzieliscie.api.test@proton.me",
                     "plaintext_password": "dupa",
                     "first_name": "Grzegorz",
                     "last_name": "Brzęczyszczykiewicz",
@@ -184,16 +249,57 @@ mod register_tests {
                 })
                 .to_string(),
             )
-            .dispatch();
+            .dispatch()
+            .await;
+
+        let rocket = client.rocket();
+        let db = DB::fetch(rocket).unwrap();
+
+        let status = response.status();
+        println!("{:?}", response.into_string().await);
+        assert_eq!(status, Status::Created);
+
+        let user = get_user_by_id(&mut db.get().await.unwrap(), 1)
+            .await
+            .unwrap();
+        
+        let token = user.verification_tokrn;
+
+        let response = client
+            .get(format!("/auth/verify/{}", token))
+            .dispatch()
+            .await;
 
         assert_eq!(
-            response.into_string(),
-            Some(
+            response.into_string().await,
+            Some(get_verification_page(
+                &"Verification successful",
+                &"You can now close this page and return to the app",
+            ))
+        )
+    }
+
+    #[rocket::async_test]
+    async fn register_without_verification() {
+        let client = Client::tracked(rocket())
+            .await
+            .expect("Failed to create client");
+        let response = client
+            .post(uri!("/auth/register"))
+            .header(ContentType::JSON)
+            .body(
                 json!({
-                    "account_id": 1
+                    "email": "wiedzieliscie.api.test@proton.me",
+                    "plaintext_password": "dupa",
+                    "first_name": "Grzegorz123",
+                    "last_name": "Brzęczyszczykiewicz",
+                    "gender": 'm'
                 })
-                .to_string()
+                .to_string(),
             )
-        );
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Created);
     }
 }
