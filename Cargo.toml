@@ -8,6 +8,7 @@ resend-rs = "0.9.1"
 rocket = { version = "0.5.1", features = ["json"]}
 tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread"] }
 sqlx = { version = "0.7.4", features = [ "runtime-tokio", "sqlite" ] }
+uuid = { version = "1.11.0", features = [ "v4" ]}
 
 [dependencies.rocket_db_pools]
 version = "0.2.0"
