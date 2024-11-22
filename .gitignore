@@ -1,1 +1,4 @@
 /target
+db.*
+run.sh
+test.sh
