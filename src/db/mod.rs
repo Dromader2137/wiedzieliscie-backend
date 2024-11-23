@@ -18,7 +18,11 @@ async fn create_user_table(db: &mut SqliteConnection) -> Result<(), String> {
         gender bool,
         verified bool,
         last_verification int,
-        verification_tokrn varchar(255)
+        verification_tokrn varchar(255),
+        password_version int,
+        pending_password varchar(255),
+        last_password_change int,
+        password_change_token varchar(255)
     )")
         .execute(db).await {
         Err(err) => {

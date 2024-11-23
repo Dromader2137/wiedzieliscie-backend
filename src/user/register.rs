@@ -73,8 +73,11 @@ async fn create_user(
 
     match query("INSERT INTO 
                 users 
-                (user_id, first_name, last_name, email, password, gender, verified, last_verification, verification_tokrn) 
-                VALUES (?,?,?,?,?,?,0,?,?)")
+                (user_id, first_name, last_name, email, 
+                password, gender, verified, last_verification, verification_tokrn,
+                password_version, pending_password, last_password_change,
+                password_change_token) 
+                VALUES (?,?,?,?,?,?,0,?,?,0,NULL,?,NULL)")
         .bind(id)
         .bind(data.first_name)
         .bind(data.last_name)
@@ -83,6 +86,7 @@ async fn create_user(
         .bind(data.gender == 'm')
         .bind(timestamp as i64)
         .bind(token)
+        .bind(timestamp as i64)
         .execute(db).await {
         Ok(_) => Ok(()),
         Err(err) => Err(format!("Failed to insert user into the database: {}", err))
@@ -174,7 +178,7 @@ pub async fn auth_resend_verification(mut db: Connection<DB>, account_id: u32) -
     (Status::Ok, json!({}))
 }
 
-fn get_verification_page(title: &str, message: &str) -> String {
+pub fn get_verification_page(title: &str, message: &str) -> String {
     format!(
         "
             <head>
