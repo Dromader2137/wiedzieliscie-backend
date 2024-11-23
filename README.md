@@ -14,5 +14,6 @@ ROCKET_CLI_COLORS=0
 RESEND_API_KEY='<api-key>'
 WIEDZIELISCIE_BACKEND_FROM_MAIL='<email>'
 WIEDZIELISCIE_BACKEND_URL='localhost:8000'
+WIEDZIELISCIE_BACKEND_SECRET='<base64_secret>'
 cargo test -- --test-threads=1
 ```

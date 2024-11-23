@@ -28,6 +28,7 @@ fn rocket() -> _ {
         .mount("/", routes![
             user::register::auth_register,
             user::register::auth_resend_verification,
-            user::register::auth_verify
+            user::register::auth_verify,
+            user::login::auth_login
         ])
 }
