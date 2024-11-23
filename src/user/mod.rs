@@ -3,6 +3,7 @@ use sqlx::{prelude::FromRow, query_as, query, SqliteConnection};
 pub mod register;
 pub mod login;
 pub mod jwt;
+pub mod reset;
 
 #[derive(Debug, FromRow)]
 pub struct UserDB {
@@ -110,8 +111,8 @@ pub async fn update_user_password_reset_timestamp(db: &mut SqliteConnection, use
     }
 }
 
-pub async fn update_user_password(db: &mut SqliteConnection, user_id: u32) -> Result<(), String> {
-    match query("UPDATE users SET password = pending_password WHERE user_id = ?")
+pub async fn update_user_password_from_pending_and_invalidate_token(db: &mut SqliteConnection, user_id: u32) -> Result<(), String> {
+    match query("UPDATE users SET password = pending_password, pending_password = NULL, password_change_token = NULL WHERE user_id = ?")
         .bind(user_id)
         .execute(db)
         .await {
