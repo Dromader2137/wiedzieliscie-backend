@@ -29,6 +29,8 @@ fn rocket() -> _ {
             user::register::auth_register,
             user::register::auth_resend_verification,
             user::register::auth_verify,
-            user::login::auth_login
+            user::login::auth_login,
+            user::reset::auth_password_reset,
+            user::reset::auth_password_reset_verify,
         ])
 }

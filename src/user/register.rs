@@ -1,6 +1,6 @@
 use std::{
     env,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
@@ -13,12 +13,14 @@ use rocket::{
     },
 };
 use rocket_db_pools::Connection;
-use sqlx::{query, Row, SqliteConnection};
 use uuid::Uuid;
 
 use crate::DB;
 
-use super::{get_user_by_auth_token, get_user_by_id, update_user_verification_status};
+use super::{
+    add_verification, create_user, email_taken, get_user_by_id, get_verification_by_id,
+    get_verification_by_token, next_user_id, remove_verification, update_user_verification_status,
+};
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -28,69 +30,6 @@ pub struct RegisterData<'r> {
     first_name: &'r str,
     last_name: &'r str,
     gender: char,
-}
-
-async fn email_taken<'a>(db: &mut SqliteConnection, email: &'a str) -> Result<bool, &'a str> {
-    match query("SELECT user_id FROM users WHERE ? = email")
-        .bind(email)
-        .fetch_optional(db)
-        .await
-    {
-        Ok(val) => match val {
-            Some(_) => Ok(true),
-            None => Ok(false),
-        },
-        Err(_) => Err("Failed to perform a database query"),
-    }
-}
-
-async fn next_user_id<'a>(db: &mut SqliteConnection) -> Result<u32, &'a str> {
-    match query("SELECT MAX(user_id) FROM users")
-        .fetch_optional(db)
-        .await
-    {
-        Ok(val) => match val {
-            Some(row) => match row.try_get::<u32, _>(0) {
-                Ok(id) => Ok(id + 1),
-                Err(_) => Err("Database error"),
-            },
-            None => Ok(1),
-        },
-        Err(_) => Err("Failed to perform a database query"),
-    }
-}
-
-async fn create_user(
-    db: &mut SqliteConnection,
-    id: u32,
-    data: &RegisterData<'_>,
-    token: &str,
-) -> Result<(), String> {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs();
-
-    match query("INSERT INTO 
-                users 
-                (user_id, first_name, last_name, email, 
-                password, gender, verified, last_verification, verification_tokrn,
-                password_version, pending_password, last_password_change,
-                password_change_token) 
-                VALUES (?,?,?,?,?,?,0,?,?,0,NULL,?,NULL)")
-        .bind(id)
-        .bind(data.first_name)
-        .bind(data.last_name)
-        .bind(data.email)
-        .bind(data.plaintext_password)
-        .bind(data.gender == 'm')
-        .bind(timestamp as i64)
-        .bind(token)
-        .bind(timestamp as i64)
-        .execute(db).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(format!("Failed to insert user into the database: {}", err))
-    }
 }
 
 async fn send_registration_email(email: &str, verification_token: &str) -> Result<(), String> {
@@ -144,7 +83,21 @@ pub async fn auth_register(
 
     let token = Uuid::new_v4().to_string();
 
-    if let Err(err) = create_user(&mut db, user_id, &data, &token).await {
+    if let Err(err) = create_user(
+        &mut db,
+        user_id,
+        data.first_name,
+        data.last_name,
+        data.email,
+        data.plaintext_password,
+        data.gender,
+    )
+    .await
+    {
+        return (Status::InternalServerError, json!({"error": err}));
+    }
+
+    if let Err(err) = add_verification(&mut db, user_id, &token).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
 
@@ -162,16 +115,31 @@ pub async fn auth_resend_verification(mut db: Connection<DB>, account_id: u32) -
         Err(err) => return (Status::NotFound, json!({"error": err})),
     };
 
+    let verification = match get_verification_by_id(&mut db, account_id).await {
+        Ok(val) => val,
+        Err(err) => return (Status::NotFound, json!({"error": err})),
+    };
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time")
         .as_secs() as i64;
 
-    if timestamp - user.last_verification < 60 {
+    if timestamp - verification.timestamp < 60 {
         return (Status::BadRequest, json!({"error": "Too fast"}));
     }
 
-    if let Err(err) = send_registration_email(&user.email, &user.verification_tokrn).await {
+    if let Err(err) = remove_verification(&mut db, user.user_id).await {
+        return (Status::InternalServerError, json!({"error": err}));
+    }
+
+    let token = Uuid::new_v4().to_string();
+
+    if let Err(err) = add_verification(&mut db, user.user_id, &token).await {
+        return (Status::InternalServerError, json!({"error": err}));
+    }
+
+    if let Err(err) = send_registration_email(&user.email, &token).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
 
@@ -198,7 +166,12 @@ pub fn get_verification_page(title: &str, message: &str) -> String {
 
 #[get("/auth/verify/<token>")]
 pub async fn auth_verify(mut db: Connection<DB>, token: &str) -> RawHtml<String> {
-    let user = match get_user_by_auth_token(&mut db, token).await {
+    let verification = match get_verification_by_token(&mut db, token).await {
+        Ok(val) => val,
+        Err(err) => return RawHtml(get_verification_page(&"Verification failed", &err)),
+    };
+
+    let user = match get_user_by_id(&mut db, verification.user_id).await {
         Ok(val) => val,
         Err(err) => return RawHtml(get_verification_page(&"Verification failed", &err)),
     };
@@ -208,11 +181,18 @@ pub async fn auth_verify(mut db: Connection<DB>, token: &str) -> RawHtml<String>
         .expect("Time")
         .as_secs() as i64;
 
-    if user.verification_tokrn != token || timestamp - user.last_verification > 3600 {
-        return RawHtml(get_verification_page(
-            &"Verification failed",
-            &"Token invalid",
-        ));
+    if verification.verification_token != token || timestamp - verification.timestamp > 3600 {
+        match remove_verification(&mut db, user.user_id).await {
+            Ok(_) => {
+                return RawHtml(get_verification_page(
+                    &"Verification failed",
+                    &"Token invalid",
+                ));
+            }
+            Err(err) => {
+                return RawHtml(get_verification_page(&"Verification failed", &err));
+            }
+        }
     }
 
     if let Err(err) = update_user_verification_status(&mut db, user.user_id).await {
@@ -234,8 +214,9 @@ mod register_tests {
     use rocket::serde::json::json;
     use rocket_db_pools::{Database, Pool};
 
-    use crate::{rocket, user::get_user_by_id, DB};
     use super::get_verification_page;
+    use crate::user::get_verification_by_id;
+    use crate::{rocket, DB};
 
     #[rocket::async_test]
     async fn register_with_verification() {
@@ -267,11 +248,11 @@ mod register_tests {
         println!("{:?}", response.into_string().await);
         assert_eq!(status, Status::Created);
 
-        let user = get_user_by_id(&mut db.get().await.unwrap(), 1)
+        let verification = get_verification_by_id(&mut db.get().await.unwrap(), 1)
             .await
             .unwrap();
-        
-        let token = user.verification_tokrn;
+
+        let token = verification.verification_token;
 
         let response = client
             .get(format!("/auth/verify/{}", token))
