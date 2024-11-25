@@ -3,10 +3,11 @@ use std::env;
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
 use rocket::{http::Status, response::content::RawHtml, serde::{json::{json, Json, Value}, Deserialize}};
 use rocket_db_pools::Connection;
+use uuid::Uuid;
 
 use crate::DB;
 
-use super::get_user_by_email;
+use super::{get_user_by_email, reset_in_progress, start_reset};
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -50,7 +51,24 @@ pub async fn auth_password_reset(mut db: Connection<DB>, data: Json<ResetData<'_
         Err(_) => return (Status::BadRequest, json!({"error": "User not found"}))
     };
 
+    match reset_in_progress(&mut db, user.user_id).await {
+        Ok(val) => {
+            if val {
+                return (Status::BadRequest, json!({"error": "reset already in progress"}))
+            }
+        },
+        Err(err) => return (Status::InternalServerError, json!({"error": err}))
+    }
+
+    let token = Uuid::new_v4().to_string();
+
+    if let Err(err) = start_reset(&mut db, user.user_id, data.plaintext_password, &token).await {
+        return (Status::InternalServerError, json!({"error": err}));
+    }
     
+    if let Err(err) = send_password_reset_email(&user.email, &token).await {
+        return (Status::InternalServerError, json!({"error": err}));
+    }
 
     (Status::Ok, json!({}))
 }

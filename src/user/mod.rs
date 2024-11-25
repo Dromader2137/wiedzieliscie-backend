@@ -326,4 +326,53 @@ pub async fn get_session_count(db: &mut SqliteConnection, user_id: u32) -> Resul
 // ██║     ██║  ██║███████║███████║╚███╔███╔╝╚██████╔╝██║  ██║██████╔╝    ██║  ██║███████╗███████║███████╗   ██║   
 // ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═════╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝   ╚═╝   
 
-pub async fn 
+#[derive(Debug, FromRow)]
+pub struct PasswordResetDB {
+    pub user_id: u32,
+    pub reset_token: String,
+    pub password: String,
+    pub timestamp: i64,
+    pub valid_until: i64,
+}
+
+pub async fn reset_in_progress(db: &mut SqliteConnection, user_id: u32) -> Result<bool, String> {
+    match query("SELECT user_id FROM password_resets WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(val) => match val {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        },
+        Err(_) => Err("Failed to perform a database query".to_owned()),
+    }
+}
+
+pub async fn start_reset(db: &mut SqliteConnection, user_id: u32, password: &str, token: &str) -> Result<(), String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs();
+
+    match query(
+        "INSERT INTO 
+                password_resets
+                (user_id, reset_token, password, timestamp, valid_until) 
+                VALUES (?,?,?,?,?)",
+    )
+    .bind(user_id)
+    .bind(token)
+    .bind(password)
+    .bind(timestamp as i64)
+    .bind(timestamp as i64 + 300)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!(
+            "Failed to insert password reset into the database: {}",
+            err
+        )),
+    }
+}
