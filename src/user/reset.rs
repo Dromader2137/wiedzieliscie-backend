@@ -1,13 +1,26 @@
-use std::env;
+use std::{
+    env,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
-use rocket::{http::Status, response::content::RawHtml, serde::{json::{json, Json, Value}, Deserialize}};
+use rocket::{
+    http::Status,
+    response::content::RawHtml,
+    serde::{
+        json::{json, Json, Value},
+        Deserialize,
+    },
+};
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
 use crate::DB;
 
-use super::{get_user_by_email, reset_in_progress, start_reset};
+use super::{
+    get_reset_by_token, get_user_by_email, get_user_by_id, reset_in_progress, start_reset,
+    stop_all_sessions, update_user_password,
+};
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -45,19 +58,25 @@ async fn send_password_reset_email(email: &str, reset_token: &str) -> Result<(),
 }
 
 #[post("/auth/password_reset", format = "json", data = "<data>")]
-pub async fn auth_password_reset(mut db: Connection<DB>, data: Json<ResetData<'_>>) -> (Status, Value) {
+pub async fn auth_password_reset(
+    mut db: Connection<DB>,
+    data: Json<ResetData<'_>>,
+) -> (Status, Value) {
     let user = match get_user_by_email(&mut db, &data.email).await {
         Ok(val) => val,
-        Err(_) => return (Status::BadRequest, json!({"error": "User not found"}))
+        Err(_) => return (Status::BadRequest, json!({"error": "User not found"})),
     };
 
     match reset_in_progress(&mut db, user.user_id).await {
         Ok(val) => {
             if val {
-                return (Status::BadRequest, json!({"error": "reset already in progress"}))
+                return (
+                    Status::BadRequest,
+                    json!({"error": "reset already in progress"}),
+                );
             }
-        },
-        Err(err) => return (Status::InternalServerError, json!({"error": err}))
+        }
+        Err(err) => return (Status::InternalServerError, json!({"error": err})),
     }
 
     let token = Uuid::new_v4().to_string();
@@ -65,7 +84,7 @@ pub async fn auth_password_reset(mut db: Connection<DB>, data: Json<ResetData<'_
     if let Err(err) = start_reset(&mut db, user.user_id, data.plaintext_password, &token).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
-    
+
     if let Err(err) = send_password_reset_email(&user.email, &token).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
@@ -73,7 +92,58 @@ pub async fn auth_password_reset(mut db: Connection<DB>, data: Json<ResetData<'_
     (Status::Ok, json!({}))
 }
 
+pub fn get_password_reset_page(title: &str, message: &str) -> String {
+    format!(
+        "
+            <head>
+            <meta charset=\"utf-8\" />
+            <title>WiedzieLIŚCIE password reset</title>
+            </head>
+            <body style=\"background-color: black; color: white;\">
+            <div style=\"display: flex; justify-content: center; align-items: center; text-align: center; min-height: 100vh; flex-direction: column\">
+            <h1>{}</h1> 
+            <p>{}</p>
+            </div>
+            </body>
+    ",
+        title, message
+    )
+}
+
 #[get("/auth/password_reset/verify/<token>")]
-pub async fn auth_password_reset_verify(db: Connection<DB>, token: &str) -> RawHtml<String> {
-    RawHtml("Work in progress".to_owned())
+pub async fn auth_password_reset_verify(mut db: Connection<DB>, token: &str) -> RawHtml<String> {
+    let reset = match get_reset_by_token(&mut db, token).await {
+        Ok(val) => val,
+        Err(err) => return RawHtml(get_password_reset_page(&"Password reset failed", &err)),
+    };
+
+    let user = match get_user_by_id(&mut db, reset.user_id).await {
+        Ok(val) => val,
+        Err(err) => return RawHtml(get_password_reset_page(&"Password reset failed", &err)),
+    };
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs() as i64;
+
+    if timestamp > reset.valid_until {
+        return RawHtml(get_password_reset_page(
+            &"Password reset failed",
+            &"Password reset expired",
+        ));
+    }
+
+    if let Err(err) = stop_all_sessions(&mut db, user.user_id).await {
+        RawHtml(get_password_reset_page(&"Password reset failed", &err));
+    }
+
+    if let Err(err) = update_user_password(&mut db, user.user_id).await {
+        RawHtml(get_password_reset_page(&"Password reset failed", &err));
+    }
+
+    RawHtml(get_password_reset_page(
+        &"Password reset successful",
+        &"You can now close this page and log into the app using your new password",
+    ))
 }

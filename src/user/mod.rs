@@ -14,7 +14,7 @@ pub mod reset;
 // ██████╔╝██║  ██║   ██║   ██║  ██║██████╔╝██║  ██║███████║███████╗    ██║     ╚██████╔╝██║ ╚████║╚██████╗   ██║   ██║╚██████╔╝██║ ╚████║███████║
 // ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝    ╚═╝      ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝
 
-// ██╗   ██╗███████╗███████╗██████╗ 
+// ██╗   ██╗███████╗███████╗██████╗
 // ██║   ██║██╔════╝██╔════╝██╔══██╗
 // ██║   ██║███████╗█████╗  ██████╔╝
 // ██║   ██║╚════██║██╔══╝  ██╔══██╗
@@ -69,7 +69,7 @@ async fn create_user(
     last_name: &str,
     email: &str,
     password: &str,
-    gender: char
+    gender: char,
 ) -> Result<(), String> {
     match query(
         "INSERT INTO 
@@ -93,7 +93,7 @@ async fn create_user(
 }
 
 pub async fn get_user_by_id(db: &mut SqliteConnection, user_id: u32) -> Result<UserDB, String> {
-    let user: UserDB = match query_as("SELECT * FROM users WHERE user_id = ?")
+    let user: UserDB = match query_as("SELECT Duration* FROM users WHERE user_id = ?")
         .bind(user_id)
         .fetch_optional(db)
         .await
@@ -143,13 +143,28 @@ pub async fn update_user_verification_status(
     }
 }
 
+pub async fn update_user_password(db: &mut SqliteConnection, user_id: u32) -> Result<(), String> {
+    match query("UPDATE users SET verified = 1 WHERE user_id = ?")
+        .bind(user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => return Ok(()),
+        Err(err) => {
+            return Err(format!(
+                "Failed to update user's verifications status: {}",
+                err
+            ))
+        }
+    }
+}
+
 // ██╗   ██╗███████╗██████╗ ██╗███████╗██╗ ██████╗ █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
 // ██║   ██║██╔════╝██╔══██╗██║██╔════╝██║██╔════╝██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
 // ██║   ██║█████╗  ██████╔╝██║█████╗  ██║██║     ███████║   ██║   ██║██║   ██║██╔██╗ ██║
 // ╚██╗ ██╔╝██╔══╝  ██╔══██╗██║██╔══╝  ██║██║     ██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
 //  ╚████╔╝ ███████╗██║  ██║██║██║     ██║╚██████╗██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
 //   ╚═══╝  ╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
-
 
 #[derive(Debug, FromRow)]
 pub struct VerificationDB {
@@ -288,32 +303,29 @@ pub async fn start_session(
     }
 }
 
-pub async fn stop_all_sessions(
-    db: &mut SqliteConnection,
-    user_id: u32
-) -> Result<(), String> {
+pub async fn stop_all_sessions(db: &mut SqliteConnection, user_id: u32) -> Result<(), String> {
     match query("DELETE FROM sessions WHERE user_id = ?")
         .bind(user_id)
         .execute(db)
-        .await {
+        .await
+    {
         Ok(_) => Ok(()),
-        Err(err) => Err(format!("Failed to delete sessions: {}", err))
+        Err(err) => Err(format!("Failed to delete sessions: {}", err)),
     }
 }
 
 pub async fn get_session_count(db: &mut SqliteConnection, user_id: u32) -> Result<u32, String> {
-    let query =
-        query("SELECT COUNT(session_token) FROM sessions WHERE user_id = ?")
-            .bind(user_id)
-            .fetch_optional(db)
-            .await;
+    let query = query("SELECT COUNT(session_token) FROM sessions WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await;
 
     let val: u32 = match query {
         Ok(row) => {
             let row = row.unwrap();
             row.get(0)
         }
-        Err(err) => return Err(format!("Failed to get session count: {}", err))
+        Err(err) => return Err(format!("Failed to get session count: {}", err)),
     };
 
     Ok(val)
@@ -321,10 +333,10 @@ pub async fn get_session_count(db: &mut SqliteConnection, user_id: u32) -> Resul
 
 // ██████╗  █████╗ ███████╗███████╗██╗    ██╗ ██████╗ ██████╗ ██████╗     ██████╗ ███████╗███████╗███████╗████████╗
 // ██╔══██╗██╔══██╗██╔════╝██╔════╝██║    ██║██╔═══██╗██╔══██╗██╔══██╗    ██╔══██╗██╔════╝██╔════╝██╔════╝╚══██╔══╝
-// ██████╔╝███████║███████╗███████╗██║ █╗ ██║██║   ██║██████╔╝██║  ██║    ██████╔╝█████╗  ███████╗█████╗     ██║   
-// ██╔═══╝ ██╔══██║╚════██║╚════██║██║███╗██║██║   ██║██╔══██╗██║  ██║    ██╔══██╗██╔══╝  ╚════██║██╔══╝     ██║   
-// ██║     ██║  ██║███████║███████║╚███╔███╔╝╚██████╔╝██║  ██║██████╔╝    ██║  ██║███████╗███████║███████╗   ██║   
-// ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═════╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝   ╚═╝   
+// ██████╔╝███████║███████╗███████╗██║ █╗ ██║██║   ██║██████╔╝██║  ██║    ██████╔╝█████╗  ███████╗█████╗     ██║
+// ██╔═══╝ ██╔══██║╚════██║╚════██║██║███╗██║██║   ██║██╔══██╗██║  ██║    ██╔══██╗██╔══╝  ╚════██║██╔══╝     ██║
+// ██║     ██║  ██║███████║███████║╚███╔███╔╝╚██████╔╝██║  ██║██████╔╝    ██║  ██║███████╗███████║███████╗   ██║
+// ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝ ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═════╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝   ╚═╝
 
 #[derive(Debug, FromRow)]
 pub struct PasswordResetDB {
@@ -349,7 +361,12 @@ pub async fn reset_in_progress(db: &mut SqliteConnection, user_id: u32) -> Resul
     }
 }
 
-pub async fn start_reset(db: &mut SqliteConnection, user_id: u32, password: &str, token: &str) -> Result<(), String> {
+pub async fn start_reset(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    password: &str,
+    token: &str,
+) -> Result<(), String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time")
@@ -375,4 +392,24 @@ pub async fn start_reset(db: &mut SqliteConnection, user_id: u32, password: &str
             err
         )),
     }
+}
+
+pub async fn get_reset_by_token(
+    db: &mut SqliteConnection,
+    token: &str,
+) -> Result<PasswordResetDB, String> {
+    let password_reset: PasswordResetDB =
+        match query_as("SELECT * FROM password_resets WHERE reset_token = ?")
+            .bind(token)
+            .fetch_optional(db)
+            .await
+        {
+            Ok(row) => match row {
+                Some(val) => val,
+                None => return Err("Password reset not found".to_owned()),
+            },
+            Err(err) => return Err(format!("Failed to get password reset by token: {}", err)),
+        };
+
+    Ok(password_reset)
 }

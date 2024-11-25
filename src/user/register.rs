@@ -1,6 +1,6 @@
 use std::{
     env,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
@@ -13,7 +13,6 @@ use rocket::{
     },
 };
 use rocket_db_pools::Connection;
-use sqlx::{query, Row, SqliteConnection};
 use uuid::Uuid;
 
 use crate::DB;
