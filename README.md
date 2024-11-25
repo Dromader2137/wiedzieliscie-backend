@@ -8,6 +8,7 @@
 - WIEDZIELISCIE_BACKEND_FROM_MAIL - the email addres we are sending from (mandatory)
 - RESEND_API_KEY - resend api key
 - WIEDZIELISCIE_BACKEND_URL - duh
+- WIEDZIELISCIE_BACKEND_SECRET - jwt secret in base64
 ## Testing
 ```
 ROCKET_CLI_COLORS=0 
