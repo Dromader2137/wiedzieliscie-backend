@@ -93,7 +93,7 @@ async fn create_user(
 }
 
 pub async fn get_user_by_id(db: &mut SqliteConnection, user_id: u32) -> Result<UserDB, String> {
-    let user: UserDB = match query_as("SELECT Duration* FROM users WHERE user_id = ?")
+    let user: UserDB = match query_as("SELECT * FROM users WHERE user_id = ?")
         .bind(user_id)
         .fetch_optional(db)
         .await
@@ -143,8 +143,13 @@ pub async fn update_user_verification_status(
     }
 }
 
-pub async fn update_user_password(db: &mut SqliteConnection, user_id: u32) -> Result<(), String> {
-    match query("UPDATE users SET verified = 1 WHERE user_id = ?")
+pub async fn update_user_password(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    password: &str,
+) -> Result<(), String> {
+    match query("UPDATE users SET password = ? WHERE user_id = ?")
+        .bind(password)
         .bind(user_id)
         .execute(db)
         .await
@@ -401,6 +406,26 @@ pub async fn get_reset_by_token(
     let password_reset: PasswordResetDB =
         match query_as("SELECT * FROM password_resets WHERE reset_token = ?")
             .bind(token)
+            .fetch_optional(db)
+            .await
+        {
+            Ok(row) => match row {
+                Some(val) => val,
+                None => return Err("Password reset not found".to_owned()),
+            },
+            Err(err) => return Err(format!("Failed to get password reset by token: {}", err)),
+        };
+
+    Ok(password_reset)
+}
+
+pub async fn get_reset_by_user_id(
+    db: &mut SqliteConnection,
+    user_id: u32,
+) -> Result<PasswordResetDB, String> {
+    let password_reset: PasswordResetDB =
+        match query_as("SELECT * FROM password_resets WHERE user_id = ?")
+            .bind(user_id)
             .fetch_optional(db)
             .await
         {

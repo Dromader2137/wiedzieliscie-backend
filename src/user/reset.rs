@@ -36,14 +36,13 @@ async fn send_password_reset_email(email: &str, reset_token: &str) -> Result<(),
         Ok(val) => val,
         Err(_) => return Err("From mail not found".to_owned()),
     };
-    let subject = "Confirm your registration to WiedzieLIŚCIE";
+    let subject = "Confirm your password reset";
     let password_reset_link = match env::var("WIEDZIELISCIE_BACKEND_URL") {
         Ok(val) => val + "/auth/password_reset/verify/" + reset_token,
         Err(_) => return Err("Url not found".to_owned()),
     };
 
-    let email = CreateEmailBaseOptions::new(from, [email], subject).with_html(&format!(
-        "
+    let email = CreateEmailBaseOptions::new(from, [email], subject).with_html(&format!( "
             <a href=\"{}\">Click this to confirm password change</a>
             <p>If the link above doesn't work just copy this and paste it into a new browser tab: {}</p>
         ",
@@ -138,7 +137,7 @@ pub async fn auth_password_reset_verify(mut db: Connection<DB>, token: &str) -> 
         RawHtml(get_password_reset_page(&"Password reset failed", &err));
     }
 
-    if let Err(err) = update_user_password(&mut db, user.user_id).await {
+    if let Err(err) = update_user_password(&mut db, user.user_id, &reset.password).await {
         RawHtml(get_password_reset_page(&"Password reset failed", &err));
     }
 
@@ -146,4 +145,89 @@ pub async fn auth_password_reset_verify(mut db: Connection<DB>, token: &str) -> 
         &"Password reset successful",
         &"You can now close this page and log into the app using your new password",
     ))
+}
+
+#[cfg(test)]
+mod reset_tests {
+    use std::env;
+
+    use rocket::http::{ContentType, Status};
+    use rocket::local::asynchronous::Client;
+    use rocket::serde::json::json;
+    use rocket_db_pools::{Database, Pool};
+
+    use crate::user::reset::get_password_reset_page;
+    use crate::user::{get_reset_by_user_id, get_user_by_id};
+    use crate::{rocket, DB};
+
+    #[rocket::async_test]
+    async fn reset() {
+        env::set_var("WIEDZIELISCIE_BACKEND_RESET_DB", "1");
+
+        let client = Client::tracked(rocket())
+            .await
+            .expect("Failed to create client");
+        let response = client
+            .post(uri!("/auth/register"))
+            .header(ContentType::JSON)
+            .body(
+                json!({
+                    "email": "wiedzieliscie.api.test@proton.me",
+                    "plaintext_password": "dupa",
+                    "first_name": "Grzegorz",
+                    "last_name": "Brzęczyszczykiewicz",
+                    "gender": 'm'
+                })
+                .to_string(),
+            )
+            .dispatch()
+            .await;
+
+        let rocket = client.rocket();
+        let db = DB::fetch(rocket).unwrap();
+
+        let status = response.status();
+        println!("{:?}", response.into_string().await);
+        assert_eq!(status, Status::Created);
+
+        let response = client
+            .post(uri!("/auth/password_reset"))
+            .header(ContentType::JSON)
+            .body(
+                json!({
+                    "email": "wiedzieliscie.api.test@proton.me",
+                    "plaintext_password": "dupanew",
+                })
+                .to_string(),
+            )
+            .dispatch()
+            .await;
+
+        let status = response.status();
+        println!("{:?}", response.into_string().await);
+        assert_eq!(status, Status::Ok);
+
+        let reset = get_reset_by_user_id(&mut db.get().await.unwrap(), 1)
+            .await
+            .unwrap();
+
+        let response = client
+            .get(format!("/auth/password_reset/verify/{}", reset.reset_token))
+            .dispatch()
+            .await;
+
+        assert_eq!(
+            response.into_string().await,
+            Some(get_password_reset_page(
+                &"Password reset successful",
+                &"You can now close this page and log into the app using your new password",
+            ))
+        );
+
+        let user = get_user_by_id(&mut db.get().await.unwrap(), 1)
+            .await
+            .unwrap();
+
+        assert_eq!(&user.password, "dupanew");
+    }
 }

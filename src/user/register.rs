@@ -18,7 +18,8 @@ use uuid::Uuid;
 use crate::DB;
 
 use super::{
-    add_verification, create_user, email_taken, get_user_by_id, get_verification_by_id, get_verification_by_token, next_user_id, remove_verification, update_user_verification_status
+    add_verification, create_user, email_taken, get_user_by_id, get_verification_by_id,
+    get_verification_by_token, next_user_id, remove_verification, update_user_verification_status,
 };
 
 #[derive(Deserialize)]
@@ -82,7 +83,17 @@ pub async fn auth_register(
 
     let token = Uuid::new_v4().to_string();
 
-    if let Err(err) = create_user(&mut db, user_id, data.first_name, data.last_name, data.email, data.plaintext_password, data.gender).await {
+    if let Err(err) = create_user(
+        &mut db,
+        user_id,
+        data.first_name,
+        data.last_name,
+        data.email,
+        data.plaintext_password,
+        data.gender,
+    )
+    .await
+    {
         return (Status::InternalServerError, json!({"error": err}));
     }
 
