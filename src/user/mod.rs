@@ -4,10 +4,12 @@ use sqlx::{prelude::FromRow, query, query_as, Row, SqliteConnection};
 
 pub mod jwt;
 pub mod login;
+pub mod logout;
 pub mod register;
 pub mod reset;
-pub mod logout;
 pub mod retrieve;
+pub mod update_email;
+pub mod verifyless_updates;
 
 // ██████╗  █████╗ ████████╗ █████╗ ██████╗  █████╗ ███████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
 // ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝    ██╔════╝██║   ██║████╗  ██║██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
@@ -32,6 +34,7 @@ pub struct UserDB {
     pub password: String,
     pub gender: bool,
     pub verified: bool,
+    pub admin: bool,
 }
 
 async fn email_taken<'a>(db: &mut SqliteConnection, email: &'a str) -> Result<bool, &'a str> {
@@ -77,8 +80,8 @@ async fn create_user(
         "INSERT INTO 
                 users 
                 (user_id, first_name, last_name, email, 
-                password, gender, verified) 
-                VALUES (?,?,?,?,?,?,0)",
+                password, gender, verified, admin) 
+                VALUES (?,?,?,?,?,?,0,0)",
     )
     .bind(id)
     .bind(first_name)
@@ -135,13 +138,11 @@ pub async fn update_user_verification_status(
         .execute(db)
         .await
     {
-        Ok(_) => return Ok(()),
-        Err(err) => {
-            return Err(format!(
-                "Failed to update user's verifications status: {}",
-                err
-            ))
-        }
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!(
+            "Failed to update user's verifications status: {}",
+            err
+        )),
     }
 }
 
@@ -156,13 +157,55 @@ pub async fn update_user_password(
         .execute(db)
         .await
     {
-        Ok(_) => return Ok(()),
-        Err(err) => {
-            return Err(format!(
-                "Failed to update user's verifications status: {}",
-                err
-            ))
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to update user's password: {}", err)),
+    }
+}
+
+pub async fn update_user_email(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    email: &str,
+) -> Result<(), String> {
+    match query("UPDATE users SET email = ? WHERE user_id = ?")
+        .bind(email)
+        .bind(user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to update user's password: {}", err)),
+    }
+}
+
+pub async fn update_user_name_or_gender(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    field: &str,
+    data: &str,
+) -> Result<(), String> {
+    if field == "gender" {
+        match query(&format!("UPDATE users SET {} = ? WHERE user_id = ?", field))
+            .bind(data == "m")
+            .bind(user_id)
+            .execute(db)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(err) => Err(format!("Failed to update user's data: {}", err)),
         }
+    } else if field == "last_name" || field == "first_name" {
+        match query(&format!("UPDATE users SET {} = ? WHERE user_id = ?", field))
+            .bind(data)
+            .bind(user_id)
+            .execute(db)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(err) => Err(format!("Failed to update user's data: {}", err)),
+        }
+    } else {
+        Err("Invalid field".to_owned())
     }
 }
 
@@ -353,18 +396,17 @@ pub async fn get_session_by_token(
     db: &mut SqliteConnection,
     token: &str,
 ) -> Result<SessionDB, String> {
-    let password_reset: SessionDB =
-        match query_as("SELECT * FROM sessions WHERE session_token = ?")
-            .bind(token)
-            .fetch_optional(db)
-            .await
-        {
-            Ok(row) => match row {
-                Some(val) => val,
-                None => return Err("Session not found".to_owned()),
-            },
-            Err(err) => return Err(format!("Failed to get session by token: {}", err)),
-        };
+    let password_reset: SessionDB = match query_as("SELECT * FROM sessions WHERE session_token = ?")
+        .bind(token)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(row) => match row {
+            Some(val) => val,
+            None => return Err("Session not found".to_owned()),
+        },
+        Err(err) => return Err(format!("Failed to get session by token: {}", err)),
+    };
 
     Ok(password_reset)
 }
@@ -470,4 +512,138 @@ pub async fn get_reset_by_user_id(
         };
 
     Ok(password_reset)
+}
+
+pub async fn remove_password_reset_by_user_id(
+    db: &mut SqliteConnection,
+    user_id: u32,
+) -> Result<(), String> {
+    match query("DELETE FROM password_resets WHERE user_id = ?")
+        .bind(user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete passowrd reset: {}", err)),
+    }
+}
+
+// ███████╗███╗   ███╗ █████╗ ██╗██╗         ██╗   ██╗██████╗ ██████╗  █████╗ ████████╗███████╗
+// ██╔════╝████╗ ████║██╔══██╗██║██║         ██║   ██║██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝
+// █████╗  ██╔████╔██║███████║██║██║         ██║   ██║██████╔╝██║  ██║███████║   ██║   █████╗
+// ██╔══╝  ██║╚██╔╝██║██╔══██║██║██║         ██║   ██║██╔═══╝ ██║  ██║██╔══██║   ██║   ██╔══╝
+// ███████╗██║ ╚═╝ ██║██║  ██║██║███████╗    ╚██████╔╝██║     ██████╔╝██║  ██║   ██║   ███████╗
+// ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚══════╝     ╚═════╝ ╚═╝     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
+
+#[derive(Debug, FromRow)]
+pub struct EmailUpdateDB {
+    pub user_id: u32,
+    pub update_token: String,
+    pub email: String,
+    pub timestamp: i64,
+    pub valid_until: i64,
+}
+
+pub async fn email_update_in_progress(
+    db: &mut SqliteConnection,
+    user_id: u32,
+) -> Result<bool, String> {
+    match query("SELECT user_id FROM email_updates WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(val) => match val {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        },
+        Err(_) => Err("Failed to perform a database query".to_owned()),
+    }
+}
+
+pub async fn start_email_update(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    email: &str,
+    token: &str,
+) -> Result<(), String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs();
+
+    match query(
+        "INSERT INTO 
+                email_updates
+                (user_id, update_token, email, timestamp, valid_until) 
+                VALUES (?,?,?,?,?)",
+    )
+    .bind(user_id)
+    .bind(token)
+    .bind(email)
+    .bind(timestamp as i64)
+    .bind(timestamp as i64 + 3600)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!(
+            "Failed to insert email update into the database: {}",
+            err
+        )),
+    }
+}
+
+pub async fn get_email_update_by_token(
+    db: &mut SqliteConnection,
+    token: &str,
+) -> Result<EmailUpdateDB, String> {
+    let password_reset: EmailUpdateDB =
+        match query_as("SELECT * FROM email_updates WHERE update_token = ?")
+            .bind(token)
+            .fetch_optional(db)
+            .await
+        {
+            Ok(row) => match row {
+                Some(val) => val,
+                None => return Err("Email update not found".to_owned()),
+            },
+            Err(err) => return Err(format!("Failed to get email update by token: {}", err)),
+        };
+
+    Ok(password_reset)
+}
+
+pub async fn get_email_update_by_user_id(
+    db: &mut SqliteConnection,
+    user_id: u32,
+) -> Result<EmailUpdateDB, String> {
+    let password_reset: EmailUpdateDB =
+        match query_as("SELECT * FROM email_updates WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await
+        {
+            Ok(row) => match row {
+                Some(val) => val,
+                None => return Err("Email update not found".to_owned()),
+            },
+            Err(err) => return Err(format!("Failed to get email update by user id: {}", err)),
+        };
+
+    Ok(password_reset)
+}
+
+pub async fn remove_email_updates_by_user_id(
+    db: &mut SqliteConnection,
+    user_id: u32,
+) -> Result<(), String> {
+    match query("DELETE FROM email_updates WHERE user_id = ?")
+        .bind(user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete email update: {}", err)),
+    }
 }
