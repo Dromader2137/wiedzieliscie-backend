@@ -17,19 +17,14 @@ async fn create_user_table(db: &mut SqliteConnection) -> Result<(), String> {
         password varchar(255),
         gender bool,
         verified bool,
-        last_verification int,
-        verification_tokrn varchar(255),
-        password_version int,
-        pending_password varchar(255),
-        last_password_change int,
-        password_change_token varchar(255)
+        admin bool
     )")
         .execute(db).await {
         Err(err) => {
             if &format!("{}", err) == "error returned from database: (code: 1) table users already exists" {
-                return Ok(())
+                Ok(())
             } else {
-                return Err(format!("Failed to create users table: {}", err))
+                Err(format!("Failed to create users table: {}", err))
             }
         },
         _ => Ok(())

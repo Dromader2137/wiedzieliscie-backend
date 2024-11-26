@@ -21,12 +21,12 @@ pub struct LoginData<'r> {
 
 #[post("/auth/login", format = "json", data = "<data>")]
 pub async fn auth_login(mut db: Connection<DB>, data: Json<LoginData<'_>>) -> (Status, Value) {
-    let user = match get_user_by_email(&mut db, &data.email).await {
+    let user = match get_user_by_email(&mut db, data.email).await {
         Ok(val) => val,
-        Err(_) => return (Status::BadRequest, json!({"error": "User not found"})),
+        Err(err) => return (Status::BadRequest, json!({"error": err})),
     };
 
-    if user.verified == false {
+    if !user.verified {
         return (Status::BadRequest, json!({"error": "User not verified"}));
     }
 

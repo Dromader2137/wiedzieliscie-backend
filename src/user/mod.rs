@@ -8,6 +8,7 @@ pub mod register;
 pub mod reset;
 pub mod logout;
 pub mod retrieve;
+pub mod verifyless_updates;
 
 // ██████╗  █████╗ ████████╗ █████╗ ██████╗  █████╗ ███████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
 // ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝    ██╔════╝██║   ██║████╗  ██║██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
@@ -32,6 +33,7 @@ pub struct UserDB {
     pub password: String,
     pub gender: bool,
     pub verified: bool,
+    pub admin: bool
 }
 
 async fn email_taken<'a>(db: &mut SqliteConnection, email: &'a str) -> Result<bool, &'a str> {
@@ -77,8 +79,8 @@ async fn create_user(
         "INSERT INTO 
                 users 
                 (user_id, first_name, last_name, email, 
-                password, gender, verified) 
-                VALUES (?,?,?,?,?,?,0)",
+                password, gender, verified, admin) 
+                VALUES (?,?,?,?,?,?,0,0)",
     )
     .bind(id)
     .bind(first_name)
@@ -135,9 +137,9 @@ pub async fn update_user_verification_status(
         .execute(db)
         .await
     {
-        Ok(_) => return Ok(()),
+        Ok(_) => Ok(()),
         Err(err) => {
-            return Err(format!(
+            Err(format!(
                 "Failed to update user's verifications status: {}",
                 err
             ))
@@ -156,10 +158,53 @@ pub async fn update_user_password(
         .execute(db)
         .await
     {
-        Ok(_) => return Ok(()),
+        Ok(_) => Ok(()),
         Err(err) => {
-            return Err(format!(
-                "Failed to update user's verifications status: {}",
+            Err(format!(
+                "Failed to update user's password: {}",
+                err
+            ))
+        }
+    }
+}
+
+pub async fn update_user_email(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    email: &str,
+) -> Result<(), String> {
+    match query("UPDATE users SET email = ? WHERE user_id = ?")
+        .bind(email)
+        .bind(user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            Err(format!(
+                "Failed to update user's password: {}",
+                err
+            ))
+        }
+    }
+}
+
+pub async fn update_user_name_or_gender(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    field: &str,
+    data: &str,
+) -> Result<(), String> {
+    match query(&format!("UPDATE users SET {} = ? WHERE user_id = ?", field))
+        .bind(data)
+        .bind(user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            Err(format!(
+                "Failed to update user's data: {}",
                 err
             ))
         }
