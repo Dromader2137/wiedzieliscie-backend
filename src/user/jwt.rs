@@ -10,9 +10,9 @@ use std::{
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct Claims {
-    uid: u32,
+    pub uid: u32,
     exp: u64,
-    token: String
+    pub token: String
 }
 
 fn get_secret() -> Option<String> {

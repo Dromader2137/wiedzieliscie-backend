@@ -6,6 +6,8 @@ pub mod jwt;
 pub mod login;
 pub mod register;
 pub mod reset;
+pub mod logout;
+pub mod retrieve;
 
 // ██████╗  █████╗ ████████╗ █████╗ ██████╗  █████╗ ███████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
 // ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝    ██╔════╝██║   ██║████╗  ██║██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
@@ -319,6 +321,17 @@ pub async fn stop_all_sessions(db: &mut SqliteConnection, user_id: u32) -> Resul
     }
 }
 
+pub async fn stop_session(db: &mut SqliteConnection, token: &str) -> Result<(), String> {
+    match query("DELETE FROM sessions WHERE session_token = ?")
+        .bind(token)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete session: {}", err)),
+    }
+}
+
 pub async fn get_session_count(db: &mut SqliteConnection, user_id: u32) -> Result<u32, String> {
     let query = query("SELECT COUNT(session_token) FROM sessions WHERE user_id = ?")
         .bind(user_id)
@@ -334,6 +347,26 @@ pub async fn get_session_count(db: &mut SqliteConnection, user_id: u32) -> Resul
     };
 
     Ok(val)
+}
+
+pub async fn get_session_by_token(
+    db: &mut SqliteConnection,
+    token: &str,
+) -> Result<SessionDB, String> {
+    let password_reset: SessionDB =
+        match query_as("SELECT * FROM sessions WHERE session_token = ?")
+            .bind(token)
+            .fetch_optional(db)
+            .await
+        {
+            Ok(row) => match row {
+                Some(val) => val,
+                None => return Err("Session not found".to_owned()),
+            },
+            Err(err) => return Err(format!("Failed to get session by token: {}", err)),
+        };
+
+    Ok(password_reset)
 }
 
 // ██████╗  █████╗ ███████╗███████╗██╗    ██╗ ██████╗ ██████╗ ██████╗     ██████╗ ███████╗███████╗███████╗████████╗

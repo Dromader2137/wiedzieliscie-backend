@@ -32,5 +32,7 @@ fn rocket() -> _ {
             user::login::auth_login,
             user::reset::auth_password_reset,
             user::reset::auth_password_reset_verify,
+            user::logout::auth_logout,
+            user::retrieve::auth_retrieve_user,
         ])
 }
