@@ -9,6 +9,7 @@
 - RESEND_API_KEY - resend api key
 - WIEDZIELISCIE_BACKEND_URL - duh
 - WIEDZIELISCIE_BACKEND_SECRET - jwt secret in base64
+- WIEDZIELISCIE_BACKEND_KEIN_MAIL - to remove email spam from testing
 ## Testing
 ```
 ROCKET_CLI_COLORS=0 
@@ -16,5 +17,6 @@ RESEND_API_KEY='<api-key>'
 WIEDZIELISCIE_BACKEND_FROM_MAIL='<email>'
 WIEDZIELISCIE_BACKEND_URL='localhost:8000'
 WIEDZIELISCIE_BACKEND_SECRET='<base64_secret>'
+WIEDZIELISCIE_BACKEND_KEIN_MAIL=1
 cargo test -- --test-threads=1
 ```

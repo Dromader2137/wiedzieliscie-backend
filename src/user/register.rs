@@ -33,6 +33,10 @@ pub struct RegisterData<'r> {
 }
 
 async fn send_registration_email(email: &str, verification_token: &str) -> Result<(), String> {
+    if env::var("WIEDZIELISCIE_BACKEND_KEIN_MAIL").is_ok() {
+        return Ok(());
+    }
+
     let resend = Resend::default();
 
     let from = match env::var("WIEDZIELISCIE_BACKEND_FROM_MAIL") {

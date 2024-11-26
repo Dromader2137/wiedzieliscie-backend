@@ -31,6 +31,10 @@ pub struct ResetData<'r> {
 }
 
 async fn send_password_reset_email(email: &str, reset_token: &str) -> Result<(), String> {
+    if env::var("WIEDZIELISCIE_BACKEND_KEIN_MAIL").is_ok() {
+        return Ok(());
+    }
+
     let resend = Resend::default();
 
     let from = match env::var("WIEDZIELISCIE_BACKEND_FROM_MAIL") {
