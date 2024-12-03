@@ -10,6 +10,7 @@ pub mod reset;
 pub mod retrieve;
 pub mod update_email;
 pub mod verifyless_updates;
+pub mod delete_user;
 
 // ██████╗  █████╗ ████████╗ █████╗ ██████╗  █████╗ ███████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
 // ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝    ██╔════╝██║   ██║████╗  ██║██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
@@ -175,6 +176,48 @@ pub async fn update_user_email(
     {
         Ok(_) => Ok(()),
         Err(err) => Err(format!("Failed to update user's password: {}", err)),
+    }
+}
+
+pub async fn delete_user(
+    db: &mut SqliteConnection,
+    user_id: u32
+) -> Result<(), String> {
+    let user: UserDB = match get_user_by_id(db, user_id).await {
+        Ok(val) => val,
+        Err(err) => return Err(format!("Failed to get user: {}", err)),
+    };
+    println!("DELETE CALLED");
+
+    match query(
+        "INSERT INTO 
+                deleted_users 
+                (user_id, first_name, last_name, email, 
+                password, gender, verified, admin) 
+                VALUES (?,?,?,?,?,?,?,?)",
+        )
+        .bind(user.user_id)
+        .bind(user.first_name)
+        .bind(user.last_name)
+        .bind(user.email)
+        .bind(user.password)
+        .bind(user.gender)
+        .bind(user.verified)
+        .bind(user.admin)
+        .execute(&mut *db)
+        .await
+        {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Failed to delete the user: {}", err)),
+        }
+
+    match query("DELETE FROM users WHERE user_id = ?")
+        .bind(user.user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete the user: {}", err)),
     }
 }
 

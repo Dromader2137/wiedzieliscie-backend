@@ -15,7 +15,6 @@ pub struct DB(sqlx::SqlitePool);
 #[launch]
 fn rocket() -> _ {
     let db = DB::init();
-
     rocket::build()
         .attach(db)
         .attach(AdHoc::on_liftoff("Startup Check", |rocket| {
@@ -42,6 +41,7 @@ fn rocket() -> _ {
                 user::verifyless_updates::user_modify_password,
                 user::update_email::user_modify_email,
                 user::update_email::user_modify_email_verify,
+                user::delete_user::delete_user,
             ],
         )
 }
