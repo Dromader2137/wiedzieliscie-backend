@@ -5,6 +5,7 @@ use rocket_db_pools::{Database, Pool};
 #[macro_use]
 extern crate rocket;
 
+pub mod admin;
 pub mod db;
 pub mod user;
 
