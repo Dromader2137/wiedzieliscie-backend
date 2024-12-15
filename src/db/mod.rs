@@ -248,6 +248,7 @@ async fn create_dialogue_part_table(db: &mut SqliteConnection) -> Result<(), Str
         "CREATE TABLE dialogue_parts (
         dialogue_id int,
         part_id int,
+        character_id int,
         text varchar(65536)
     )",
     )
@@ -267,24 +268,29 @@ async fn create_dialogue_part_table(db: &mut SqliteConnection) -> Result<(), Str
     }
 }
 
-async fn create_location_task_table(db: &mut SqliteConnection) -> Result<(), String> {
+async fn create_task_table(db: &mut SqliteConnection) -> Result<(), String> {
     if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
         if var.to_lowercase() == "true" || var == "1" {
-            query("DROP TABLE location_tasks")
-                .execute(&mut *db)
-                .await
-                .ok();
+            query("DROP TABLE tasks").execute(&mut *db).await.ok();
         }
     }
 
     match query(
-        "CREATE TABLE location_tasks (
-        quest_id int,
+        "CREATE TABLE tasks (
+        task_id int,
+        type varchar(255),
         name varchar(255),
-        min_radius int,
-        max_radius int,
+        quest_id int,
         desc varchar(65536),
-        location_to_duplicate int
+        lattitude real,
+        longitude real,
+        min_radius real,
+        max_radius real,
+        location_to_duplicate int,
+        question varchar(65536),
+        answers varchar(65536),
+        choice_answers varchar(32),
+        text_answers varchar(65536)
     )",
     )
     .execute(db)
@@ -292,78 +298,11 @@ async fn create_location_task_table(db: &mut SqliteConnection) -> Result<(), Str
     {
         Err(err) => {
             if &format!("{}", err)
-                == "error returned from database: (code: 1) table location_tasks already exists"
+                == "error returned from database: (code: 1) table tasks already exists"
             {
                 Ok(())
             } else {
-                Err(format!("Failed to create location_tasks table: {}", err))
-            }
-        }
-        _ => Ok(()),
-    }
-}
-
-async fn create_mchoice_task_table(db: &mut SqliteConnection) -> Result<(), String> {
-    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
-        if var.to_lowercase() == "true" || var == "1" {
-            query("DROP TABLE mchoice_tasks")
-                .execute(&mut *db)
-                .await
-                .ok();
-        }
-    }
-
-    match query(
-        "CREATE TABLE mchoice_tasks (
-        quest_id int,
-        name varchar(255),
-        desc varchar(65536),
-        question varchar(255),
-        answers varchar(32)
-    )",
-    )
-    .execute(db)
-    .await
-    {
-        Err(err) => {
-            if &format!("{}", err)
-                == "error returned from database: (code: 1) table mchoice_tasks already exists"
-            {
-                Ok(())
-            } else {
-                Err(format!("Failed to create mchoice_tasks table: {}", err))
-            }
-        }
-        _ => Ok(()),
-    }
-}
-
-async fn create_text_task_table(db: &mut SqliteConnection) -> Result<(), String> {
-    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
-        if var.to_lowercase() == "true" || var == "1" {
-            query("DROP TABLE text_tasks").execute(&mut *db).await.ok();
-        }
-    }
-
-    match query(
-        "CREATE TABLE text_tasks (
-        quest_id int,
-        name varchar(255),
-        desc varchar(65536),
-        question varchar(255),
-        answers varchar(65536)
-    )",
-    )
-    .execute(db)
-    .await
-    {
-        Err(err) => {
-            if &format!("{}", err)
-                == "error returned from database: (code: 1) table text_tasks already exists"
-            {
-                Ok(())
-            } else {
-                Err(format!("Failed to create text_tasks table: {}", err))
+                Err(format!("Failed to create tasks table: {}", err))
             }
         }
         _ => Ok(()),
@@ -379,7 +318,5 @@ pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_character_table(&mut db).await.unwrap();
     create_dialogue_table(&mut db).await.unwrap();
     create_dialogue_part_table(&mut db).await.unwrap();
-    create_location_task_table(&mut db).await.unwrap();
-    create_mchoice_task_table(&mut db).await.unwrap();
-    create_text_task_table(&mut db).await.unwrap();
+    create_task_table(&mut db).await.unwrap();
 }

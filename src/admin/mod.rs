@@ -106,6 +106,7 @@ pub struct Dialogue {
 pub struct DialoguePart {
     pub dialogue_id: u32,
     pub part_id: u32,
+    pub character_id: u32,
     pub text: String,
 }
 
@@ -181,6 +182,31 @@ pub async fn get_unused_dialogues(db: &mut SqliteConnection) -> Result<Vec<Dialo
     }
 }
 
+pub async fn set_dialogue_parts(
+    db: &mut SqliteConnection,
+    dialogue_id: u32,
+    dialogue_parts: Vec<(u32, &str)>,
+) -> Result<(), String> {
+    if dialogue_parts.is_empty() {
+        return Err("Empty dialogue_parts not allowed".to_string());
+    }
+
+    let mut insertion_query =
+        "INSERT INTO dialogues (dialogue_id, part_id, character_id, text) VALUES ".to_string();
+    for (part_id, (part_user, part_text)) in dialogue_parts.iter().enumerate() {
+        insertion_query += &format!(
+            "({}, {}, {}, {}),",
+            dialogue_id, part_id, part_user, part_text
+        );
+    }
+    insertion_query.pop().unwrap();
+
+    match query(&insertion_query).execute(db).await {
+        Ok(_) => Ok(()),
+        Err(err) => return Err(format!("Failed to set dialogue parts: {}", err)),
+    }
+}
+
 pub async fn get_dialogue_parts(
     db: &mut SqliteConnection,
     dialogue_id: u32,
@@ -195,5 +221,147 @@ pub async fn get_dialogue_parts(
             Ok(val)
         }
         Err(err) => return Err(format!("Failed to get unused dialogues: {}", err)),
+    }
+}
+
+// ████████╗ █████╗ ███████╗██╗  ██╗
+// ╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝
+//    ██║   ███████║███████╗█████╔╝
+//    ██║   ██╔══██║╚════██║██╔═██╗
+//    ██║   ██║  ██║███████║██║  ██╗
+//    ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+
+pub async fn next_task_id(db: &mut SqliteConnection) -> Result<u32, String> {
+    match query("SELECT MAX(task_id) FROM tasks")
+        .fetch_optional(db)
+        .await
+    {
+        Ok(val) => match val {
+            Some(row) => match row.try_get::<u32, _>(0) {
+                Ok(id) => Ok(id + 1),
+                Err(_) => Err("Database error".to_owned()),
+            },
+            None => Ok(1),
+        },
+        Err(_) => Err("Failed to perform a database query".to_owned()),
+    }
+}
+
+pub async fn add_location_task(
+    db: &mut SqliteConnection,
+    task_id: u32,
+    name: &str,
+    quest_id: Option<u32>,
+    desc: &str,
+    lattitude: f32,
+    longitude: f32,
+    min_radius: f32,
+    max_radius: f32,
+    location_to_duplicate: Option<u32>,
+) -> Result<(), String> {
+    match query(
+        "INSERT INTO tasks
+        (task_id, type, name, quest_id, desc, lattitude, longitude, min_radius, max_radius)
+        VALUES
+        (?,\'location\',?,?,?,?,?,?,?)",
+    )
+    .bind(task_id)
+    .bind(name)
+    .bind(quest_id)
+    .bind(desc)
+    .bind(lattitude)
+    .bind(longitude)
+    .bind(min_radius)
+    .bind(max_radius)
+    .bind(location_to_duplicate)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => return Err(format!("Failed to add location task: {}", err)),
+    }
+}
+
+pub async fn add_choice_task(
+    db: &mut SqliteConnection,
+    task_id: u32,
+    name: &str,
+    quest_id: Option<u32>,
+    desc: &str,
+    question: &str,
+    answers: Vec<&str>,
+    correct_answers: Vec<u32>,
+) -> Result<(), String> {
+    let mut ans = [false; 32];
+    let mut ans_str = String::new();
+
+    for id in correct_answers.iter() {
+        if *id >= 32 {
+            return Err("Questions with more than 32 answers are not allowed".to_string());
+        }
+        ans[*id as usize] = true;
+    }
+
+    for i in ans.iter() {
+        ans_str.push(if *i { '1' } else { '0' });
+    }
+
+    let answers = answers
+        .iter()
+        .map(|x| format!("{}\n", x))
+        .fold("".to_string(), |acc, x| format!("{}{}", acc, x));
+
+    match query(
+        "INSERT INTO tasks
+        (task_id, type, name, quest_id, desc, question, answers, choice_answers)
+        VALUES
+        (?,\'choice\',?,?,?,?,?)",
+    )
+    .bind(task_id)
+    .bind(name)
+    .bind(quest_id)
+    .bind(desc)
+    .bind(question)
+    .bind(answers)
+    .bind(ans_str)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => return Err(format!("Failed to add choice task: {}", err)),
+    }
+}
+
+pub async fn add_text_task(
+    db: &mut SqliteConnection,
+    task_id: u32,
+    name: &str,
+    quest_id: Option<u32>,
+    desc: &str,
+    question: &str,
+    correct_answers: Vec<&str>,
+) -> Result<(), String> {
+    let answers = correct_answers
+        .iter()
+        .map(|x| format!("{}\n", x))
+        .fold("".to_string(), |acc, x| format!("{}{}", acc, x));
+
+    match query(
+        "INSERT INTO tasks
+        (task_id, type, name, quest_id, desc, question, text_answers)
+        VALUES
+        (?,\'choice\',?,?,?,?,?)",
+    )
+    .bind(task_id)
+    .bind(name)
+    .bind(quest_id)
+    .bind(desc)
+    .bind(question)
+    .bind(answers)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => return Err(format!("Failed to add text task: {}", err)),
     }
 }
