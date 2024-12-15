@@ -231,6 +231,40 @@ pub async fn get_dialogue_parts(
 //    ██║   ██║  ██║███████║██║  ██╗
 //    ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
 
+#[derive(Debug, FromRow)]
+pub struct LocationTask {
+    pub task_id: u32,
+    pub name: String,
+    pub quest_id: Option<u32>,
+    pub desc: String,
+    pub lattitude: f32,
+    pub longitude: f32,
+    pub min_radius: f32,
+    pub max_radius: f32,
+    pub location_to_duplicate: Option<u32>,
+}
+
+#[derive(Debug, FromRow)]
+pub struct ChoiceTask {
+    pub task_id: u32,
+    pub name: String,
+    pub quest_id: Option<u32>,
+    pub desc: String,
+    pub question: String,
+    pub answers: String,
+    pub choice_answers: String,
+}
+
+#[derive(Debug, FromRow)]
+pub struct TextTask {
+    pub task_id: u32,
+    pub name: String,
+    pub quest_id: Option<u32>,
+    pub desc: String,
+    pub question: String,
+    pub text_answers: String,
+}
+
 pub async fn next_task_id(db: &mut SqliteConnection) -> Result<u32, String> {
     match query("SELECT MAX(task_id) FROM tasks")
         .fetch_optional(db)
@@ -350,7 +384,7 @@ pub async fn add_text_task(
         "INSERT INTO tasks
         (task_id, type, name, quest_id, desc, question, text_answers)
         VALUES
-        (?,\'choice\',?,?,?,?,?)",
+        (?,\'text\',?,?,?,?,?)",
     )
     .bind(task_id)
     .bind(name)
@@ -363,5 +397,16 @@ pub async fn add_text_task(
     {
         Ok(_) => Ok(()),
         Err(err) => return Err(format!("Failed to add text task: {}", err)),
+    }
+}
+
+pub async fn delete_task(db: &mut SqliteConnection, id: u32) -> Result<(), String> {
+    match query("DELETE FROM tasks WHERE task_id = ?")
+        .bind(id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete task: {}", err)),
     }
 }
