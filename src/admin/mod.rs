@@ -251,8 +251,8 @@ pub struct ChoiceTask {
     pub quest_id: Option<u32>,
     pub desc: String,
     pub question: String,
-    pub answers: String,
-    pub choice_answers: String,
+    pub answers: Vec<String>,
+    pub choice_answers: Vec<u32>,
 }
 
 #[derive(Debug, FromRow)]
@@ -262,7 +262,15 @@ pub struct TextTask {
     pub quest_id: Option<u32>,
     pub desc: String,
     pub question: String,
-    pub text_answers: String,
+    pub text_answers: Vec<String>,
+}
+
+#[derive(Debug)]
+pub enum Task {
+    Location(LocationTask),
+    Choice(ChoiceTask),
+    Text(TextTask),
+    Invalid(String),
 }
 
 pub async fn next_task_id(db: &mut SqliteConnection) -> Result<u32, String> {
@@ -281,6 +289,7 @@ pub async fn next_task_id(db: &mut SqliteConnection) -> Result<u32, String> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn add_location_task(
     db: &mut SqliteConnection,
     task_id: u32,
@@ -295,9 +304,9 @@ pub async fn add_location_task(
 ) -> Result<(), String> {
     match query(
         "INSERT INTO tasks
-        (task_id, type, name, quest_id, desc, lattitude, longitude, min_radius, max_radius)
+        (task_id, type, name, quest_id, desc, lattitude, longitude, min_radius, max_radius, location_to_duplicate)
         VALUES
-        (?,\'location\',?,?,?,?,?,?,?)",
+        (?,\'location\',?,?,?,?,?,?,?,?)",
     )
     .bind(task_id)
     .bind(name)
@@ -312,10 +321,11 @@ pub async fn add_location_task(
     .await
     {
         Ok(_) => Ok(()),
-        Err(err) => return Err(format!("Failed to add location task: {}", err)),
+        Err(err) => Err(format!("Failed to add location task: {}", err)),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn add_choice_task(
     db: &mut SqliteConnection,
     task_id: u32,
@@ -349,7 +359,7 @@ pub async fn add_choice_task(
         "INSERT INTO tasks
         (task_id, type, name, quest_id, desc, question, answers, choice_answers)
         VALUES
-        (?,\'choice\',?,?,?,?,?)",
+        (?,\'choice\',?,?,?,?,?,?)",
     )
     .bind(task_id)
     .bind(name)
@@ -362,7 +372,7 @@ pub async fn add_choice_task(
     .await
     {
         Ok(_) => Ok(()),
-        Err(err) => return Err(format!("Failed to add choice task: {}", err)),
+        Err(err) => Err(format!("Failed to add choice task: {}", err)),
     }
 }
 
@@ -396,7 +406,7 @@ pub async fn add_text_task(
     .await
     {
         Ok(_) => Ok(()),
-        Err(err) => return Err(format!("Failed to add text task: {}", err)),
+        Err(err) => Err(format!("Failed to add text task: {}", err)),
     }
 }
 
@@ -408,5 +418,198 @@ pub async fn delete_task(db: &mut SqliteConnection, id: u32) -> Result<(), Strin
     {
         Ok(_) => Ok(()),
         Err(err) => Err(format!("Failed to delete task: {}", err)),
+    }
+}
+
+pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
+    let rows = match query("SELECT * FROM tasks").fetch_all(db).await {
+        Ok(val) => val,
+        Err(err) => return Err(format!("Failed to get tasks: {}", err)),
+    };
+
+    let tasks: Vec<Task> = rows
+        .iter()
+        .map(|row| {
+            if let (
+                Ok(Some(task_id)),
+                Ok(Some(task_type)),
+                Ok(Some(name)),
+                Ok(quest_id),
+                Ok(Some(desc)),
+                Ok(Some(lattitude)),
+                Ok(Some(longitude)),
+                Ok(Some(min_radius)),
+                Ok(Some(max_radius)),
+                Ok(location_to_duplicate),
+            ) = (
+                row.try_get("task_id"),
+                row.try_get::<Option<&str>, _>("type"),
+                row.try_get("name"),
+                row.try_get("quest_id"),
+                row.try_get("desc"),
+                row.try_get("lattitude"),
+                row.try_get("longitude"),
+                row.try_get("min_radius"),
+                row.try_get("max_radius"),
+                row.try_get("location_to_duplicate"),
+            ) {
+                if task_type != "location" {
+                    return Task::Invalid("Task which matches the chracteristics of a location task is not marked as such".to_string());
+                }
+
+                return Task::Location(LocationTask {
+                    task_id,
+                    name,
+                    quest_id,
+                    desc,
+                    lattitude,
+                    longitude,
+                    min_radius,
+                    max_radius,
+                    location_to_duplicate,
+                });
+            }
+            if let (
+                Ok(Some(task_id)),
+                Ok(Some(task_type)),
+                Ok(Some(name)),
+                Ok(quest_id),
+                Ok(Some(desc)),
+                Ok(Some(question)),
+                Ok(Some(answers)),
+                Ok(Some(choice_answers)),
+            ) = (
+                row.try_get("task_id"),
+                row.try_get::<Option<&str>, _>("type"),
+                row.try_get("name"),
+                row.try_get("quest_id"),
+                row.try_get("desc"),
+                row.try_get("question"),
+                row.try_get::<Option<&str>, _>("answers"),
+                row.try_get::<Option<&str>, _>("choice_answers"),
+            ) {
+                if task_type != "choice" {
+                    return Task::Invalid("Task which matches the chracteristics of a choice task is not marked as such".to_string());
+                }
+
+                let answers = answers.trim().split("\n").map(|x| x.to_owned()).collect();
+                let choice_answers = choice_answers.trim().chars().enumerate().filter_map(|(i, x)| {
+                    if x == '1' {
+                        Some(i as u32)
+                    } else {
+                        None
+                    }
+                }).collect();
+
+                return Task::Choice(ChoiceTask{
+                    task_id,
+                    name,
+                    quest_id,
+                    desc,
+                    question,
+                    answers,
+                    choice_answers
+                });
+            }
+            if let (
+                Ok(Some(task_id)),
+                Ok(Some(task_type)),
+                Ok(Some(name)),
+                Ok(quest_id),
+                Ok(Some(desc)),
+                Ok(Some(question)),
+                Ok(Some(text_answers)),
+            ) = (
+                row.try_get("task_id"),
+                row.try_get::<Option<&str>, _>("type"),
+                row.try_get("name"),
+                row.try_get("quest_id"),
+                row.try_get("desc"),
+                row.try_get("question"),
+                row.try_get::<Option<&str>, _>("text_answers"),
+            ) {
+                if task_type != "text" {
+                    return Task::Invalid("Task which matches the chracteristics of a text task is not marked as such".to_string());
+                }
+                
+                let text_answers = text_answers.trim().split("\n").map(|x| x.to_owned()).collect();
+
+                return Task::Text(TextTask{
+                    task_id,
+                    name,
+                    quest_id,
+                    desc,
+                    question,
+                    text_answers
+                });
+            }
+            Task::Invalid("Task does not match any category".to_string())
+        })
+        .collect();
+
+    Ok(tasks)
+}
+
+#[cfg(test)]
+mod admin_db_tests {
+    use std::env;
+
+    use rocket::local::asynchronous::Client;
+    use rocket_db_pools::{Database, Pool};
+
+    use crate::{rocket, DB};
+
+    use super::{add_location_task, get_tasks, next_task_id, add_choice_task, add_text_task};
+
+    #[rocket::async_test]
+    async fn test() {
+        env::set_var("WIEDZIELISCIE_BACKEND_RESET_DB", "1");
+        
+        let client = Client::tracked(rocket())
+            .await
+            .expect("Failed to create client");
+
+        let db = DB::fetch(client.rocket()).unwrap();
+
+        let id = next_task_id(&mut db.get().await.unwrap()).await.unwrap();
+
+        add_location_task(
+            &mut db.get().await.unwrap(), 
+            id,
+            "test loc 1", 
+            None, 
+            "test desc 1", 
+            0.0, 
+            0.0, 
+            1.0, 
+            4.0, 
+            None
+        ).await.unwrap();
+        
+        add_choice_task(
+            &mut db.get().await.unwrap(), 
+            id,
+            "test choice 1", 
+            Some(1), 
+            "test desc 2", 
+            "R u dumb?",
+            vec!["Yes", "No", "Sure"],
+            vec![0, 2]
+        ).await.unwrap();
+
+        add_text_task(
+            &mut db.get().await.unwrap(), 
+            id,
+            "test choice 1", 
+            Some(1), 
+            "test desc 2", 
+            "R u dumb?",
+            vec!["Yes", "No", "Sure"]
+        ).await.unwrap();
+
+        let tasks = get_tasks(&mut db.get().await.unwrap()).await.unwrap();
+        println!("{:?}", tasks);
+
+        assert_eq!(format!("{:?}", tasks), "[Location(LocationTask { task_id: 1, name: \"test loc 1\", quest_id: None, desc: \"test desc 1\", lattitude: 0.0, longitude: 0.0, min_radius: 1.0, max_radius: 4.0, location_to_duplicate: None }), Choice(ChoiceTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", answers: [\"Yes\", \"No\", \"Sure\"], choice_answers: [0, 2] }), Text(TextTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", text_answers: [\"Yes\", \"No\", \"Sure\"] })]");
     }
 }
