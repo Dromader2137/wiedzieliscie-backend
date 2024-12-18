@@ -83,7 +83,7 @@ pub async fn get_all_characters(db: &mut SqliteConnection) -> Result<Vec<Charact
         .await
     {
         Ok(val) => Ok(val),
-        Err(err) => return Err(format!("Failed to get characters: {}", err)),
+        Err(err) => Err(format!("Failed to get characters: {}", err)),
     }
 }
 
@@ -168,7 +168,7 @@ pub async fn get_all_dialogues(db: &mut SqliteConnection) -> Result<Vec<Dialogue
         .await
     {
         Ok(val) => Ok(val),
-        Err(err) => return Err(format!("Failed to get dialogues: {}", err)),
+        Err(err) => Err(format!("Failed to get dialogues: {}", err)),
     }
 }
 
@@ -178,7 +178,7 @@ pub async fn get_unused_dialogues(db: &mut SqliteConnection) -> Result<Vec<Dialo
         .await
     {
         Ok(val) => Ok(val),
-        Err(err) => return Err(format!("Failed to get unused dialogues: {}", err)),
+        Err(err) => Err(format!("Failed to get unused dialogues: {}", err)),
     }
 }
 
@@ -203,7 +203,7 @@ pub async fn set_dialogue_parts(
 
     match query(&insertion_query).execute(db).await {
         Ok(_) => Ok(()),
-        Err(err) => return Err(format!("Failed to set dialogue parts: {}", err)),
+        Err(err) => Err(format!("Failed to set dialogue parts: {}", err)),
     }
 }
 
@@ -220,7 +220,7 @@ pub async fn get_dialogue_parts(
             val.sort_by(|a, b| a.part_id.cmp(&b.part_id));
             Ok(val)
         }
-        Err(err) => return Err(format!("Failed to get unused dialogues: {}", err)),
+        Err(err) => Err(format!("Failed to get unused dialogues: {}", err)),
     }
 }
 
