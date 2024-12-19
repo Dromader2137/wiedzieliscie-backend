@@ -237,8 +237,6 @@ pub struct LocationTask {
     pub name: String,
     pub quest_id: Option<u32>,
     pub desc: String,
-    pub lattitude: f32,
-    pub longitude: f32,
     pub min_radius: f32,
     pub max_radius: f32,
     pub location_to_duplicate: Option<u32>,
@@ -296,24 +294,20 @@ pub async fn add_location_task(
     name: &str,
     quest_id: Option<u32>,
     desc: &str,
-    lattitude: f32,
-    longitude: f32,
     min_radius: f32,
     max_radius: f32,
     location_to_duplicate: Option<u32>,
 ) -> Result<(), String> {
     match query(
         "INSERT INTO tasks
-        (task_id, type, name, quest_id, desc, lattitude, longitude, min_radius, max_radius, location_to_duplicate)
+        (task_id, type, name, quest_id, desc, min_radius, max_radius, location_to_duplicate)
         VALUES
-        (?,\'location\',?,?,?,?,?,?,?,?)",
+        (?,\'location\',?,?,?,?,?,?)",
     )
     .bind(task_id)
     .bind(name)
     .bind(quest_id)
     .bind(desc)
-    .bind(lattitude)
-    .bind(longitude)
     .bind(min_radius)
     .bind(max_radius)
     .bind(location_to_duplicate)
@@ -436,8 +430,6 @@ pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
                 Ok(Some(name)),
                 Ok(quest_id),
                 Ok(Some(desc)),
-                Ok(Some(lattitude)),
-                Ok(Some(longitude)),
                 Ok(Some(min_radius)),
                 Ok(Some(max_radius)),
                 Ok(location_to_duplicate),
@@ -447,8 +439,6 @@ pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
                 row.try_get("name"),
                 row.try_get("quest_id"),
                 row.try_get("desc"),
-                row.try_get("lattitude"),
-                row.try_get("longitude"),
                 row.try_get("min_radius"),
                 row.try_get("max_radius"),
                 row.try_get("location_to_duplicate"),
@@ -462,8 +452,6 @@ pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
                     name,
                     quest_id,
                     desc,
-                    lattitude,
-                    longitude,
                     min_radius,
                     max_radius,
                     location_to_duplicate,
@@ -551,7 +539,7 @@ pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
 }
 
 #[cfg(test)]
-mod admin_db_tests {
+mod task_db_tests {
     use std::env;
 
     use rocket::local::asynchronous::Client;
@@ -562,7 +550,7 @@ mod admin_db_tests {
     use super::{add_location_task, get_tasks, next_task_id, add_choice_task, add_text_task};
 
     #[rocket::async_test]
-    async fn test() {
+    async fn insert_and_get_back() {
         env::set_var("WIEDZIELISCIE_BACKEND_RESET_DB", "1");
         
         let client = Client::tracked(rocket())
@@ -579,8 +567,6 @@ mod admin_db_tests {
             "test loc 1", 
             None, 
             "test desc 1", 
-            0.0, 
-            0.0, 
             1.0, 
             4.0, 
             None
@@ -610,6 +596,127 @@ mod admin_db_tests {
         let tasks = get_tasks(&mut db.get().await.unwrap()).await.unwrap();
         println!("{:?}", tasks);
 
-        assert_eq!(format!("{:?}", tasks), "[Location(LocationTask { task_id: 1, name: \"test loc 1\", quest_id: None, desc: \"test desc 1\", lattitude: 0.0, longitude: 0.0, min_radius: 1.0, max_radius: 4.0, location_to_duplicate: None }), Choice(ChoiceTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", answers: [\"Yes\", \"No\", \"Sure\"], choice_answers: [0, 2] }), Text(TextTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", text_answers: [\"Yes\", \"No\", \"Sure\"] })]");
+        assert_eq!(format!("{:?}", tasks), "[Location(LocationTask { task_id: 1, name: \"test loc 1\", quest_id: None, desc: \"test desc 1\", min_radius: 1.0, max_radius: 4.0, location_to_duplicate: None }), Choice(ChoiceTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", answers: [\"Yes\", \"No\", \"Sure\"], choice_answers: [0, 2] }), Text(TextTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", text_answers: [\"Yes\", \"No\", \"Sure\"] })]");
     }
+}
+
+
+//  ██████╗ ██╗   ██╗███████╗███████╗████████╗
+// ██╔═══██╗██║   ██║██╔════╝██╔════╝╚══██╔══╝
+// ██║   ██║██║   ██║█████╗  ███████╗   ██║   
+// ██║▄▄ ██║██║   ██║██╔══╝  ╚════██║   ██║   
+// ╚██████╔╝╚██████╔╝███████╗███████║   ██║   
+//  ╚══▀▀═╝  ╚═════╝ ╚══════╝╚══════╝   ╚═╝   
+
+
+#[derive(Debug, FromRow)]
+pub struct QuestRow {
+    pub quest_id: u32,
+    pub desc: String,
+    pub unlocks: String,
+    pub points: u32,
+    pub coins: u32,
+    pub rewards: String
+}
+
+#[derive(Debug)]
+pub struct Quest {
+    pub quest_id: u32,
+    pub desc: String,
+    pub unlocks: Vec<u32>,
+    pub points: u32,
+    pub coins: u32,
+    pub rewards: Vec<u32>
+}
+
+impl From<&QuestRow> for Quest {
+    fn from(value: &QuestRow) -> Quest {
+        
+        let unlocks = value.unlocks.split('\n').map(|x| x.parse::<u32>().unwrap_or(0)).collect();
+        let rewards = value.rewards.split('\n').map(|x| x.parse::<u32>().unwrap_or(0)).collect();
+
+        Quest {
+            quest_id: value.quest_id,
+            desc: value.desc.clone(),
+            coins: value.coins,
+            points: value.points,
+            rewards,
+            unlocks
+        }
+    }
+}
+
+pub async fn next_quest_id(db: &mut SqliteConnection) -> Result<u32, String> {
+    match query("SELECT MAX(quest_id) FROM quest")
+        .fetch_optional(db)
+        .await
+    {
+        Ok(val) => match val {
+            Some(row) => match row.try_get::<u32, _>(0) {
+                Ok(id) => Ok(id + 1),
+                Err(_) => Err("Database error".to_owned()),
+            },
+            None => Ok(1),
+        },
+        Err(_) => Err("Failed to perform a database query".to_owned()),
+    }
+}
+
+pub async fn create_quest(
+    db: &mut SqliteConnection,
+    id: u32,
+    desc: &str,
+    unlocks: Vec<u32>,
+    points: u32,
+    coins: u32,
+    rewards: Vec<u32>,
+) -> Result<(), String> {
+    let unlocks_str: String = unlocks.iter().map(|x| {let mut y = x.to_string(); y.push('\n'); y})
+        .fold("".to_string(), |mut acc, x| { acc.push_str(&x); acc });
+    
+    let rewards_str: String = rewards.iter().map(|x| {let mut y = x.to_string(); y.push('\n'); y})
+        .fold("".to_string(), |mut acc, x| { acc.push_str(&x); acc });
+
+    match query(
+        "INSERT INTO
+        quests (quest_id, desc, unlocks, points, coins, rewards)
+        VALUES (?,?,?,?,?,?)",
+    )
+    .bind(id)
+    .bind(desc)
+    .bind(unlocks_str)
+    .bind(points)
+    .bind(coins)
+    .bind(rewards_str)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to create quest: {}", err)),
+    }
+}
+
+pub async fn delete_quest(db: &mut SqliteConnection, id: u32) -> Result<(), String> {
+    match query("DELETE FROM quests WHERE quest_id = ?")
+        .bind(id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete quest: {}", err)),
+    }
+}
+
+pub async fn get_all_quests(db: &mut SqliteConnection) -> Result<Vec<Quest>, String> {
+    let rows = match query_as::<_, QuestRow>("SELECT * FROM quests")
+        .fetch_all(db)
+        .await
+    {
+        Ok(val) => val,
+        Err(err) => return Err(format!("Failed to get quests: {}", err)),
+    };
+
+    Ok(rows.iter().map(|row| {
+        Quest::from(row)
+    }).collect())
 }

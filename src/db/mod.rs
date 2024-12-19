@@ -282,8 +282,6 @@ async fn create_task_table(db: &mut SqliteConnection) -> Result<(), String> {
         name varchar(255),
         quest_id int,
         desc varchar(65536),
-        lattitude real,
-        longitude real,
         min_radius real,
         max_radius real,
         location_to_duplicate int,
@@ -309,6 +307,39 @@ async fn create_task_table(db: &mut SqliteConnection) -> Result<(), String> {
     }
 }
 
+async fn create_quest_table(db: &mut SqliteConnection) -> Result<(), String> {
+    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        if var.to_lowercase() == "true" || var == "1" {
+            query("DROP TABLE quests").execute(&mut *db).await.ok();
+        }
+    }
+
+    match query(
+        "CREATE TABLE quests (
+        quest_id int,
+        desc varchar(65536),
+        unlocks varchar(65536),
+        points int,
+        coins int,
+        rewards varchar(65536)
+    )",
+    )
+    .execute(db)
+    .await
+    {
+        Err(err) => {
+            if &format!("{}", err)
+                == "error returned from database: (code: 1) table quests already exists"
+            {
+                Ok(())
+            } else {
+                Err(format!("Failed to create quests table: {}", err))
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
 pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_user_table(&mut db).await.unwrap();
     create_verification_table(&mut db).await.unwrap();
@@ -319,4 +350,5 @@ pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_dialogue_table(&mut db).await.unwrap();
     create_dialogue_part_table(&mut db).await.unwrap();
     create_task_table(&mut db).await.unwrap();
+    create_quest_table(&mut db).await.unwrap();
 }
