@@ -45,7 +45,7 @@ async fn create_deleted_user_table(db: &mut SqliteConnection) -> Result<(), Stri
     }
 
     match query(
-        "CREATE TABLE users (
+        "CREATE TABLE deleted_users (
         user_id int,
         first_name varchar(255),
         last_name varchar(255),
@@ -70,6 +70,40 @@ async fn create_deleted_user_table(db: &mut SqliteConnection) -> Result<(), Stri
             }
             _ => Ok(()),
         }
+}
+
+async fn create_delete_request_table(db: &mut SqliteConnection) -> Result<(), String> {
+    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        if var.to_lowercase() == "true" || var == "1" {
+            query("DROP TABLE delete_requests")
+                .execute(&mut *db)
+                .await
+                .ok();
+        }
+    }
+
+    match query(
+        "CREATE TABLE delete_requests (
+        user_id int,
+        delete_token varchar(255),
+        timestamp int,
+        valid_until int
+    )",
+    )
+    .execute(db)
+    .await
+    {
+        Err(err) => {
+            if &format!("{}", err)
+                == "error returned from database: (code: 1) table delete_requests already exists"
+            {
+                Ok(())
+            } else {
+                Err(format!("Failed to create delete_requests table: {}", err))
+            }
+        }
+        _ => Ok(()),
+    }
 }
 
 async fn create_verification_table(db: &mut SqliteConnection) -> Result<(), String> {
@@ -224,6 +258,14 @@ pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     }
 
     if let Err(err) = create_email_update_table(&mut db).await {
+        panic!("{}", err);
+    }
+
+    if let Err(err) = create_deleted_user_table(&mut db).await {
+        panic!("{}", err);
+    }
+
+    if let Err(err) = create_delete_request_table(&mut db).await {
         panic!("{}", err);
     }
 }

@@ -1,4 +1,7 @@
-use std::env;
+use std::{
+    env,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use resend_rs::{types::CreateEmailBaseOptions, Resend};
 use rocket::{
@@ -12,18 +15,16 @@ use rocket::{
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
-use crate::DB;
+use crate::{user::{delete_user_db, get_delete_request_by_token, get_user_by_id}, DB};
 
 use super::{
-    get_user_by_email, get_user_by_id,
-    start_reset,
+    deletion_in_progress, get_delete_request_by_user_id, get_user_by_email, remove_delete_request_by_user_id, start_delete
 };
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct DeleteData<'r> {
     email: &'r str,
-    plaintext_password: &'r str,
 }
 
 async fn send_delete_user_email(email: &str, delete_token: &str) -> Result<(), String> {
@@ -67,9 +68,35 @@ pub async fn delete_user(
         Err(_) => return (Status::BadRequest, json!({"error": "User not found"})),
     };
 
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs() as i64;
+
+    match deletion_in_progress(&mut db, user.user_id).await {
+        Ok(val) => {
+            if val {
+                let reset = match get_delete_request_by_user_id(&mut db, user.user_id).await {
+                    Ok(val) => val,
+                    Err(err) => return (Status::InternalServerError, json!({"error": err})),
+                };
+
+                if timestamp > reset.valid_until {
+                    match remove_delete_request_by_user_id(&mut db, user.user_id).await {
+                        Err(err) => return (Status::InternalServerError, json!({"error": err})),
+                        _ => {}
+                    }
+                } else {
+                    return (Status::BadRequest, json!({"error": "account deletion in progress"}));
+                }
+            }
+        }
+        Err(err) => return (Status::InternalServerError, json!({"error": err})),
+    }
+
     let token = Uuid::new_v4().to_string();
 
-    if let Err(err) = start_reset(&mut db, user.user_id, data.plaintext_password, &token).await {
+    if let Err(err) = start_delete(&mut db, user.user_id,  &token).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
 
@@ -101,37 +128,32 @@ pub fn get_delete_user_page(title: &str, message: &str) -> String {
 #[get("/auth/delete_user/verify/<token>")]
 pub async fn auth_password_reset_verify(mut db: Connection<DB>, token: &str) -> RawHtml<String> {
     println!("DELETE USER");
-    // get user from delete token
 
-    // let reset = match get_reset_by_token(&mut db, token).await {
-    //     Ok(val) => val,
-    //     Err(err) => return RawHtml(get_delete_user_page(&"Password reset failed", &err)),
-    // };
-    //
-    // let user = match get_user_by_id(&mut db, reset.user_id).await {
-    //     Ok(val) => val,
-    //     Err(err) => return RawHtml(get_delete_user_page(&"Password reset failed", &err)),
-    // };
-    //
-    // let timestamp = SystemTime::now()
-    //     .duration_since(UNIX_EPOCH)
-    //     .expect("Time")
-    //     .as_secs() as i64;
-    //
-    // if timestamp > reset.valid_until {
-    //     return RawHtml(get_delete_user_page(
-    //         &"Password reset failed",
-    //         &"Password reset expired",
-    //     ));
-    // }
-    //
-    // if let Err(err) = stop_all_sessions(&mut db, user.user_id).await {
-    //     RawHtml(get_delete_user_page(&"Password reset failed", &err));
-    // }
-    //
-    // if let Err(err) = update_user_password(&mut db, user.user_id, &reset.password).await {
-    //     RawHtml(get_delete_user_page(&"Password reset failed", &err));
-    // }
+    let reset = match get_delete_request_by_token(&mut db, token).await {
+        Ok(val) => val,
+        Err(err) => return RawHtml(get_delete_user_page(&"Password reset failed", &err)),
+    };
+
+    let user = match get_user_by_id(&mut db, reset.user_id).await {
+        Ok(val) => val,
+        Err(err) => return RawHtml(get_delete_user_page(&"Password reset failed", &err)),
+    };
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs() as i64;
+
+    if timestamp > reset.valid_until {
+        return RawHtml(get_delete_user_page(
+            &"Account deletion failed",
+            &"Account deletion expired",
+        ));
+    }
+
+    if let Err(err) = delete_user_db(&mut db, user.user_id).await {
+        RawHtml(get_delete_user_page(&"Password reset failed", &err));
+    }
 
     RawHtml(get_delete_user_page(
         &"Account deletion successful",
