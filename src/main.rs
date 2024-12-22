@@ -43,6 +43,13 @@ fn rocket() -> _ {
                 user::verifyless_updates::user_modify_password,
                 user::update_email::user_modify_email,
                 user::update_email::user_modify_email_verify,
+                admin::character::admin_characters_add,
+                admin::character::admin_characters_delete,
+                admin::character::admin_characters_get,
+                admin::dialogue::admin_dialogues_add,
+                admin::dialogue::admin_dialogues_delete,
+                admin::dialogue::admin_dialogues_get,
+                admin::dialogue::admin_dialogues_get_unused,
             ],
         )
 }

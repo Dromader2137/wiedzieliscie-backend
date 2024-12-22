@@ -1,3 +1,7 @@
+pub mod character;
+pub mod dialogue;
+
+use rocket::serde::Serialize;
 use sqlx::{prelude::FromRow, query, query_as, Row, SqliteConnection};
 
 //  █████╗ ██████╗ ███╗   ███╗██╗███╗   ██╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
@@ -14,7 +18,8 @@ use sqlx::{prelude::FromRow, query, query_as, Row, SqliteConnection};
 // ╚██████╗██║  ██║██║  ██║██║  ██║██║  ██║╚██████╗   ██║   ███████╗██║  ██║
 //  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct Character {
     pub character_id: u32,
     pub name: String,
@@ -94,7 +99,8 @@ pub async fn get_all_characters(db: &mut SqliteConnection) -> Result<Vec<Charact
 // ██████╔╝██║██║  ██║███████╗╚██████╔╝╚██████╔╝╚██████╔╝███████╗
 // ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝ ╚═════╝  ╚═════╝  ╚═════╝ ╚══════╝
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct Dialogue {
     pub dialogue_id: u32,
     pub quest_id: Option<u32>,
@@ -102,7 +108,8 @@ pub struct Dialogue {
     pub is_skippable: bool,
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct DialoguePart {
     pub dialogue_id: u32,
     pub part_id: u32,
@@ -137,7 +144,7 @@ pub async fn create_dialogue(
         "INSERT INTO
         dialogues
         (dialogue_id, quest_id, name, is_skippable)
-        VALUES (?,?,?,?,?)",
+        VALUES (?,?,?,?)",
     )
     .bind(id)
     .bind(quest_id)
@@ -185,17 +192,17 @@ pub async fn get_unused_dialogues(db: &mut SqliteConnection) -> Result<Vec<Dialo
 pub async fn set_dialogue_parts(
     db: &mut SqliteConnection,
     dialogue_id: u32,
-    dialogue_parts: Vec<(u32, &str)>,
+    dialogue_parts: &Vec<(u32, &str)>,
 ) -> Result<(), String> {
     if dialogue_parts.is_empty() {
         return Err("Empty dialogue_parts not allowed".to_string());
     }
 
     let mut insertion_query =
-        "INSERT INTO dialogues (dialogue_id, part_id, character_id, text) VALUES ".to_string();
+        "INSERT INTO dialogue_parts (dialogue_id, part_id, character_id, text) VALUES ".to_string();
     for (part_id, (part_user, part_text)) in dialogue_parts.iter().enumerate() {
         insertion_query += &format!(
-            "({}, {}, {}, {}),",
+            "({}, {}, {}, \"{}\"),",
             dialogue_id, part_id, part_user, part_text
         );
     }
@@ -221,6 +228,17 @@ pub async fn get_dialogue_parts(
             Ok(val)
         }
         Err(err) => Err(format!("Failed to get unused dialogues: {}", err)),
+    }
+}
+
+pub async fn delete_dialogue_parts(db: &mut SqliteConnection, id: u32) -> Result<(), String> {
+    match query("DELETE FROM dialogue_parts WHERE dialogue_id = ?")
+        .bind(id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete dialogue parts: {}", err)),
     }
 }
 
@@ -647,7 +665,7 @@ impl From<&QuestRow> for Quest {
 }
 
 pub async fn next_quest_id(db: &mut SqliteConnection) -> Result<u32, String> {
-    match query("SELECT MAX(quest_id) FROM quest")
+    match query("SELECT MAX(quest_id) FROM quests")
         .fetch_optional(db)
         .await
     {
@@ -719,4 +737,144 @@ pub async fn get_all_quests(db: &mut SqliteConnection) -> Result<Vec<Quest>, Str
     Ok(rows.iter().map(|row| {
         Quest::from(row)
     }).collect())
+}
+
+//  ██████╗ ██╗   ██╗███████╗███████╗████████╗    ███████╗████████╗ █████╗  ██████╗ ███████╗
+// ██╔═══██╗██║   ██║██╔════╝██╔════╝╚══██╔══╝    ██╔════╝╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝
+// ██║   ██║██║   ██║█████╗  ███████╗   ██║       ███████╗   ██║   ███████║██║  ███╗█████╗  
+// ██║▄▄ ██║██║   ██║██╔══╝  ╚════██║   ██║       ╚════██║   ██║   ██╔══██║██║   ██║██╔══╝  
+// ╚██████╔╝╚██████╔╝███████╗███████║   ██║       ███████║   ██║   ██║  ██║╚██████╔╝███████╗
+//  ╚══▀▀═╝  ╚═════╝ ╚══════╝╚══════╝   ╚═╝       ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+
+#[derive(Debug, FromRow)]
+struct QuestStageRow {
+    _quest_id: u32,
+    stage_id: u32,
+    task_id: Option<u32>,
+    dialogue_id: Option<u32>,
+    task_name: Option<String>,
+    task_type: Option<String>,
+    dialogue_name: Option<String>
+}
+
+#[derive(Debug)]
+pub struct QuestStage {
+    pub stage_id: u32,
+    pub content_id: u32,
+    pub stage_type: String,
+    pub name: String
+}
+
+#[derive(Debug)]
+pub enum QuestStageContent {
+    Dialogue(u32),
+    Task(u32)
+}
+
+pub async fn next_quest_stage_id(db: &mut SqliteConnection, quest_id: u32) -> Result<u32, String> {
+    match query("SELECT MAX(stage_id) FROM quest_stages WHERE quest_id = ?")
+        .bind(quest_id)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(val) => match val {
+            Some(row) => match row.try_get::<u32, _>(0) {
+                Ok(id) => Ok(id + 1),
+                Err(_) => Err("Database error".to_owned()),
+            },
+            None => Ok(1),
+        },
+        Err(_) => Err("Failed to perform a database query".to_owned()),
+    }
+}
+
+pub async fn add_quest_stage(db: &mut SqliteConnection, quest_id: u32, stage_id: u32, content: QuestStageContent) -> Result<(), String> {
+    let task_id: Option<u32> = match content {
+        QuestStageContent::Task(val) => Some(val),
+        QuestStageContent::Dialogue(_) => None
+    };
+    
+    let dialogue_id: Option<u32> = match content {
+        QuestStageContent::Dialogue(val) => Some(val),
+        QuestStageContent::Task(_) => None
+    };
+    
+    match query(
+        "INSERT INTO
+        quest_stages
+        (quest_id, stage_id, task_id, dialogue_id)
+        VALUES (?,?,?,?)",
+    )
+    .bind(quest_id)
+    .bind(stage_id)
+    .bind(task_id)
+    .bind(dialogue_id)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to add quest stage: {}", err)),
+    }
+}
+
+pub async fn get_all_quest_stages(db: &mut SqliteConnection, quest_id: u32) -> Result<Vec<QuestStage>, String> {
+    let rows = match query_as::<_, QuestStageRow>("SELECT quest_stages.quest_id, quest_stages.stage_id, quest_stages.task_id, quest_stages.dialogue_id, tasks.name, tasks.type, dialogues.name
+        JOIN tasks ON tasks.task_id = quest_stages.task_id
+        JOIN dialogues ON dialogues.dialogue_id = quest_stages.dialogue_id
+        WHERE quest_stages.quest_id = ?")
+        .bind(quest_id)
+        .fetch_all(db)
+        .await 
+        {
+            Ok(val) => val,
+            Err(err) => return Err(format!("Failed to get quest stages: {}", err))
+        };
+
+    Ok(rows.iter().filter_map(|row| {
+        if let (Some(dialogue_id), Some(dialogue_name)) = (row.dialogue_id, &row.dialogue_name) {
+            Some(QuestStage {
+                stage_id: row.stage_id,
+                name: dialogue_name.clone(),
+                content_id: dialogue_id,
+                stage_type: String::from("dialogue")
+            })
+        } else if let (Some(task_id), Some(task_name), Some(task_type)) = (row.task_id, &row.task_name, &row.task_type) {
+            Some(QuestStage {
+                stage_id: row.stage_id,
+                name: task_name.clone(),
+                content_id: task_id,
+                stage_type: task_type.clone()
+            })
+        } else {
+            None
+        }
+    }).collect())
+}
+
+pub async fn delete_quest_stage(db: &mut SqliteConnection, quest_id: u32, stage_id: u32) -> Result<(), String> {
+    match query("DELETE FROM quest_stages WHERE quest_id = ? AND stage_id = ?")
+        .bind(quest_id)
+        .bind(stage_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete quest stage: {}", err)),
+    }
+}
+
+pub async fn change_quest_stage_id(db: &mut SqliteConnection, quest_id: u32, from: u32, to: u32, delta: i32) -> Result<(), String> {
+    match query("UPDATE quest_stages 
+        SET stage_id = stage_id + ? 
+        WHERE quest_id = ? AND stage_id >= ? AND stage_id <= ?")
+        .bind(delta)
+        .bind(quest_id)
+        .bind(from)
+        .bind(to)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to change quest stage ids: {}", err))
+    }
 }

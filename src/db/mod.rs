@@ -340,6 +340,40 @@ async fn create_quest_table(db: &mut SqliteConnection) -> Result<(), String> {
     }
 }
 
+async fn create_quest_stage_table(db: &mut SqliteConnection) -> Result<(), String> {
+    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        if var.to_lowercase() == "true" || var == "1" {
+            query("DROP TABLE quest_stages")
+                .execute(&mut *db)
+                .await
+                .ok();
+        }
+    }
+
+    match query(
+        "CREATE TABLE quest_stages (
+        quest_id int,
+        stage_id int,
+        task_id int,
+        dialogue_id int
+    )",
+    )
+    .execute(db)
+    .await
+    {
+        Err(err) => {
+            if &format!("{}", err)
+                == "error returned from database: (code: 1) table quest_stages already exists"
+            {
+                Ok(())
+            } else {
+                Err(format!("Failed to create quest_stages table: {}", err))
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
 pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_user_table(&mut db).await.unwrap();
     create_verification_table(&mut db).await.unwrap();
@@ -351,4 +385,5 @@ pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_dialogue_part_table(&mut db).await.unwrap();
     create_task_table(&mut db).await.unwrap();
     create_quest_table(&mut db).await.unwrap();
+    create_quest_stage_table(&mut db).await.unwrap();
 }
