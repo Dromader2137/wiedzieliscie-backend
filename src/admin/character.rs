@@ -18,7 +18,7 @@ use super::{create_character, delete_character, get_all_characters, next_charact
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
-struct CharacterAddData<'r> {
+pub struct CharacterAddData<'r> {
     jwt: &'r str,
     name: &'r str,
     short_description: &'r str,
@@ -88,7 +88,7 @@ pub async fn admin_characters_add(
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
-struct CharacterDeleteData<'r> {
+pub struct CharacterDeleteData<'r> {
     jwt: &'r str,
     character_id: u32,
 }

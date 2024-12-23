@@ -50,6 +50,11 @@ fn rocket() -> _ {
                 admin::dialogue::admin_dialogues_delete,
                 admin::dialogue::admin_dialogues_get,
                 admin::dialogue::admin_dialogues_get_unused,
+                admin::task::admin_tasks_location_add,
+                admin::task::admin_tasks_multiple_choice_add,
+                admin::task::admin_tasks_text_answer_add,
+                admin::task::admin_tasks_get,
+                admin::task::admin_tasks_get_unused,
             ],
         )
 }

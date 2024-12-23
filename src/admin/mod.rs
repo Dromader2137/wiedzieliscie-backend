@@ -1,5 +1,6 @@
 pub mod character;
 pub mod dialogue;
+pub mod task;
 
 use rocket::serde::Serialize;
 use sqlx::{prelude::FromRow, query, query_as, Row, SqliteConnection};
@@ -249,39 +250,43 @@ pub async fn delete_dialogue_parts(db: &mut SqliteConnection, id: u32) -> Result
 //    ██║   ██║  ██║███████║██║  ██╗
 //    ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct LocationTask {
     pub task_id: u32,
     pub name: String,
     pub quest_id: Option<u32>,
-    pub desc: String,
+    pub desc: Option<String>,
     pub min_radius: f32,
     pub max_radius: f32,
     pub location_to_duplicate: Option<u32>,
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct ChoiceTask {
     pub task_id: u32,
     pub name: String,
     pub quest_id: Option<u32>,
-    pub desc: String,
+    pub desc: Option<String>,
     pub question: String,
     pub answers: Vec<String>,
     pub choice_answers: Vec<u32>,
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct TextTask {
     pub task_id: u32,
     pub name: String,
     pub quest_id: Option<u32>,
-    pub desc: String,
+    pub desc: Option<String>,
     pub question: String,
     pub text_answers: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub enum Task {
     Location(LocationTask),
     Choice(ChoiceTask),
@@ -311,7 +316,7 @@ pub async fn add_location_task(
     task_id: u32,
     name: &str,
     quest_id: Option<u32>,
-    desc: &str,
+    desc: Option<&str>,
     min_radius: f32,
     max_radius: f32,
     location_to_duplicate: Option<u32>,
@@ -343,10 +348,10 @@ pub async fn add_choice_task(
     task_id: u32,
     name: &str,
     quest_id: Option<u32>,
-    desc: &str,
+    desc: Option<&str>,
     question: &str,
-    answers: Vec<&str>,
-    correct_answers: Vec<u32>,
+    answers: &Vec<&str>,
+    correct_answers: &Vec<u32>,
 ) -> Result<(), String> {
     let mut ans = [false; 32];
     let mut ans_str = String::new();
@@ -393,9 +398,9 @@ pub async fn add_text_task(
     task_id: u32,
     name: &str,
     quest_id: Option<u32>,
-    desc: &str,
+    desc: Option<&str>,
     question: &str,
-    correct_answers: Vec<&str>,
+    correct_answers: &Vec<&str>,
 ) -> Result<(), String> {
     let answers = correct_answers
         .iter()
@@ -447,7 +452,7 @@ pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
                 Ok(Some(task_type)),
                 Ok(Some(name)),
                 Ok(quest_id),
-                Ok(Some(desc)),
+                Ok(desc),
                 Ok(Some(min_radius)),
                 Ok(Some(max_radius)),
                 Ok(location_to_duplicate),
@@ -480,7 +485,7 @@ pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
                 Ok(Some(task_type)),
                 Ok(Some(name)),
                 Ok(quest_id),
-                Ok(Some(desc)),
+                Ok(desc),
                 Ok(Some(question)),
                 Ok(Some(answers)),
                 Ok(Some(choice_answers)),
@@ -522,7 +527,130 @@ pub async fn get_tasks(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
                 Ok(Some(task_type)),
                 Ok(Some(name)),
                 Ok(quest_id),
-                Ok(Some(desc)),
+                Ok(desc),
+                Ok(Some(question)),
+                Ok(Some(text_answers)),
+            ) = (
+                row.try_get("task_id"),
+                row.try_get::<Option<&str>, _>("type"),
+                row.try_get("name"),
+                row.try_get("quest_id"),
+                row.try_get("desc"),
+                row.try_get("question"),
+                row.try_get::<Option<&str>, _>("text_answers"),
+            ) {
+                if task_type != "text" {
+                    return Task::Invalid("Task which matches the chracteristics of a text task is not marked as such".to_string());
+                }
+                
+                let text_answers = text_answers.trim().split("\n").map(|x| x.to_owned()).collect();
+
+                return Task::Text(TextTask{
+                    task_id,
+                    name,
+                    quest_id,
+                    desc,
+                    question,
+                    text_answers
+                });
+            }
+            Task::Invalid("Task does not match any category".to_string())
+        })
+        .collect();
+
+    Ok(tasks)
+}
+
+pub async fn get_tasks_unused(db: &mut SqliteConnection) -> Result<Vec<Task>, String> {
+    let rows = match query("SELECT * FROM tasks WHERE tasks.quest_id is Null").fetch_all(db).await {
+        Ok(val) => val,
+        Err(err) => return Err(format!("Failed to get tasks: {}", err)),
+    };
+
+    let tasks: Vec<Task> = rows
+        .iter()
+        .map(|row| {
+            if let (
+                Ok(Some(task_id)),
+                Ok(Some(task_type)),
+                Ok(Some(name)),
+                Ok(quest_id),
+                Ok(desc),
+                Ok(Some(min_radius)),
+                Ok(Some(max_radius)),
+                Ok(location_to_duplicate),
+            ) = (
+                row.try_get("task_id"),
+                row.try_get::<Option<&str>, _>("type"),
+                row.try_get("name"),
+                row.try_get("quest_id"),
+                row.try_get("desc"),
+                row.try_get("min_radius"),
+                row.try_get("max_radius"),
+                row.try_get("location_to_duplicate"),
+            ) {
+                if task_type != "location" {
+                    return Task::Invalid("Task which matches the chracteristics of a location task is not marked as such".to_string());
+                }
+
+                return Task::Location(LocationTask {
+                    task_id,
+                    name,
+                    quest_id,
+                    desc,
+                    min_radius,
+                    max_radius,
+                    location_to_duplicate,
+                });
+            }
+            if let (
+                Ok(Some(task_id)),
+                Ok(Some(task_type)),
+                Ok(Some(name)),
+                Ok(quest_id),
+                Ok(desc),
+                Ok(Some(question)),
+                Ok(Some(answers)),
+                Ok(Some(choice_answers)),
+            ) = (
+                row.try_get("task_id"),
+                row.try_get::<Option<&str>, _>("type"),
+                row.try_get("name"),
+                row.try_get("quest_id"),
+                row.try_get("desc"),
+                row.try_get("question"),
+                row.try_get::<Option<&str>, _>("answers"),
+                row.try_get::<Option<&str>, _>("choice_answers"),
+            ) {
+                if task_type != "choice" {
+                    return Task::Invalid("Task which matches the chracteristics of a choice task is not marked as such".to_string());
+                }
+
+                let answers = answers.trim().split("\n").map(|x| x.to_owned()).collect();
+                let choice_answers = choice_answers.trim().chars().enumerate().filter_map(|(i, x)| {
+                    if x == '1' {
+                        Some(i as u32)
+                    } else {
+                        None
+                    }
+                }).collect();
+
+                return Task::Choice(ChoiceTask{
+                    task_id,
+                    name,
+                    quest_id,
+                    desc,
+                    question,
+                    answers,
+                    choice_answers
+                });
+            }
+            if let (
+                Ok(Some(task_id)),
+                Ok(Some(task_type)),
+                Ok(Some(name)),
+                Ok(quest_id),
+                Ok(desc),
                 Ok(Some(question)),
                 Ok(Some(text_answers)),
             ) = (
@@ -584,7 +712,7 @@ mod task_db_tests {
             id,
             "test loc 1", 
             None, 
-            "test desc 1", 
+            Some("test desc 1"), 
             1.0, 
             4.0, 
             None
@@ -595,10 +723,10 @@ mod task_db_tests {
             id,
             "test choice 1", 
             Some(1), 
-            "test desc 2", 
+            Some("test desc 2"), 
             "R u dumb?",
-            vec!["Yes", "No", "Sure"],
-            vec![0, 2]
+            &vec!["Yes", "No", "Sure"],
+            &vec![0, 2]
         ).await.unwrap();
 
         add_text_task(
@@ -606,9 +734,9 @@ mod task_db_tests {
             id,
             "test choice 1", 
             Some(1), 
-            "test desc 2", 
+            Some("test desc 2"), 
             "R u dumb?",
-            vec!["Yes", "No", "Sure"]
+            &vec!["Yes", "No", "Sure"]
         ).await.unwrap();
 
         let tasks = get_tasks(&mut db.get().await.unwrap()).await.unwrap();
