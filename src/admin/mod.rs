@@ -1,6 +1,7 @@
 pub mod character;
 pub mod dialogue;
 pub mod task;
+pub mod quest;
 
 use rocket::serde::Serialize;
 use sqlx::{prelude::FromRow, query, query_as, Row, SqliteConnection};
@@ -758,6 +759,7 @@ mod task_db_tests {
 #[derive(Debug, FromRow)]
 pub struct QuestRow {
     pub quest_id: u32,
+    pub name: String,
     pub desc: String,
     pub unlocks: String,
     pub points: u32,
@@ -765,9 +767,11 @@ pub struct QuestRow {
     pub rewards: String
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct Quest {
     pub quest_id: u32,
+    pub name: String,
     pub desc: String,
     pub unlocks: Vec<u32>,
     pub points: u32,
@@ -786,6 +790,7 @@ impl From<&QuestRow> for Quest {
             desc: value.desc.clone(),
             coins: value.coins,
             points: value.points,
+            name: value.name.clone(),
             rewards,
             unlocks
         }
@@ -811,11 +816,12 @@ pub async fn next_quest_id(db: &mut SqliteConnection) -> Result<u32, String> {
 pub async fn create_quest(
     db: &mut SqliteConnection,
     id: u32,
+    name: &str,
     desc: &str,
-    unlocks: Vec<u32>,
+    unlocks: &Vec<u32>,
     points: u32,
     coins: u32,
-    rewards: Vec<u32>,
+    rewards: &Vec<u32>,
 ) -> Result<(), String> {
     let unlocks_str: String = unlocks.iter().map(|x| {let mut y = x.to_string(); y.push('\n'); y})
         .fold("".to_string(), |mut acc, x| { acc.push_str(&x); acc });
@@ -825,10 +831,11 @@ pub async fn create_quest(
 
     match query(
         "INSERT INTO
-        quests (quest_id, desc, unlocks, points, coins, rewards)
+        quests (quest_id, quest_name, desc, unlocks, points, coins, rewards)
         VALUES (?,?,?,?,?,?)",
     )
     .bind(id)
+    .bind(name)
     .bind(desc)
     .bind(unlocks_str)
     .bind(points)
@@ -885,7 +892,8 @@ struct QuestStageRow {
     dialogue_name: Option<String>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct QuestStage {
     pub stage_id: u32,
     pub content_id: u32,
@@ -991,14 +999,40 @@ pub async fn delete_quest_stage(db: &mut SqliteConnection, quest_id: u32, stage_
     }
 }
 
-pub async fn change_quest_stage_id(db: &mut SqliteConnection, quest_id: u32, from: u32, to: u32, delta: i32) -> Result<(), String> {
+pub async fn change_quest_stage_id_forward(db: &mut SqliteConnection, quest_id: u32, pos: u32) -> Result<(), String> {
     match query("UPDATE quest_stages 
-        SET stage_id = stage_id + ? 
-        WHERE quest_id = ? AND stage_id >= ? AND stage_id <= ?")
-        .bind(delta)
+        SET stage_id = CASE
+            stage_id = ? THEN ? + 1
+            stage_id = ? + 1 THEN ?
+        WHERE quest_id = ? AND stage_id IN (?, ? + 1)")
+        .bind(pos)
+        .bind(pos)
+        .bind(pos)
+        .bind(pos)
         .bind(quest_id)
-        .bind(from)
-        .bind(to)
+        .bind(pos)
+        .bind(pos)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to change quest stage ids: {}", err))
+    }
+}
+
+pub async fn change_quest_stage_id_back(db: &mut SqliteConnection, quest_id: u32, pos: u32) -> Result<(), String> {
+    match query("UPDATE quest_stages 
+        SET stage_id = CASE
+            stage_id = ? THEN ? - 1
+            stage_id = ? - 1 THEN ?
+        WHERE quest_id = ? AND stage_id IN (?, ? - 1)")
+        .bind(pos)
+        .bind(pos)
+        .bind(pos)
+        .bind(pos)
+        .bind(quest_id)
+        .bind(pos)
+        .bind(pos)
         .execute(db)
         .await
     {

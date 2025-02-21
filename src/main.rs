@@ -55,6 +55,7 @@ fn rocket() -> _ {
                 admin::task::admin_tasks_text_answer_add,
                 admin::task::admin_tasks_get,
                 admin::task::admin_tasks_get_unused,
+                admin::
             ],
         )
 }

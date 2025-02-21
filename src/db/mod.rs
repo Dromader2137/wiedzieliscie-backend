@@ -317,6 +317,7 @@ async fn create_quest_table(db: &mut SqliteConnection) -> Result<(), String> {
     match query(
         "CREATE TABLE quests (
         quest_id int,
+        quest_name varchar(65536),
         desc varchar(65536),
         unlocks varchar(65536),
         points int,
