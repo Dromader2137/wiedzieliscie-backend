@@ -40,7 +40,10 @@ async fn create_user_table(db: &mut SqliteConnection) -> Result<(), String> {
 async fn create_deleted_user_table(db: &mut SqliteConnection) -> Result<(), String> {
     if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
         if var.to_lowercase() == "true" || var == "1" {
-            query("DROP TABLE deleted_users").execute(&mut *db).await.ok();
+            query("DROP TABLE deleted_users")
+                .execute(&mut *db)
+                .await
+                .ok();
         }
     }
 
@@ -55,21 +58,21 @@ async fn create_deleted_user_table(db: &mut SqliteConnection) -> Result<(), Stri
         verified bool,
         admin bool
         )",
-        )
-        .execute(db)
-        .await
-        {
-            Err(err) => {
-                if &format!("{}", err)
-                    == "error returned from database: (code: 1) table deleted_users already exists"
-                {
-                    Ok(())
-                } else {
-                    Err(format!("Failed to create deleted_users table: {}", err))
-                }
+    )
+    .execute(db)
+    .await
+    {
+        Err(err) => {
+            if &format!("{}", err)
+                == "error returned from database: (code: 1) table deleted_users already exists"
+            {
+                Ok(())
+            } else {
+                Err(format!("Failed to create deleted_users table: {}", err))
             }
-            _ => Ok(()),
         }
+        _ => Ok(()),
+    }
 }
 
 async fn create_delete_request_table(db: &mut SqliteConnection) -> Result<(), String> {
@@ -265,18 +268,10 @@ async fn create_character_table(db: &mut SqliteConnection) -> Result<(), String>
             {
                 Ok(())
             } else {
-                Err(format!("Failed to create characters table: {}", err))
+                return Err(format!("Failed to create characters table: {}", err));
             }
         }
         _ => Ok(()),
-    }
-
-    if let Err(err) = create_deleted_user_table(&mut db).await {
-        panic!("{}", err);
-    }
-
-    if let Err(err) = create_delete_request_table(&mut db).await {
-        panic!("{}", err);
     }
 }
 
@@ -510,4 +505,6 @@ pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_quest_stage_table(&mut db).await.unwrap();
     create_game_table(&mut db).await.unwrap();
     prepare_game_table(&mut db).await.unwrap();
+    create_deleted_user_table(&mut db).await.unwrap();
+    create_delete_request_table(&mut db).await.unwrap();
 }
