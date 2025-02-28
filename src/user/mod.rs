@@ -10,6 +10,7 @@ pub mod reset;
 pub mod retrieve;
 pub mod update_email;
 pub mod verifyless_updates;
+pub mod delete_user;
 
 // ██████╗  █████╗ ████████╗ █████╗ ██████╗  █████╗ ███████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
 // ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝    ██╔════╝██║   ██║████╗  ██║██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
@@ -175,6 +176,48 @@ pub async fn update_user_email(
     {
         Ok(_) => Ok(()),
         Err(err) => Err(format!("Failed to update user's password: {}", err)),
+    }
+}
+
+pub async fn delete_user_db(
+    db: &mut SqliteConnection,
+    user_id: u32
+) -> Result<(), String> {
+    let user: UserDB = match get_user_by_id(db, user_id).await {
+        Ok(val) => val,
+        Err(err) => return Err(format!("Failed to get user: {}", err)),
+    };
+    println!("DELETE CALLED");
+
+    match query(
+        "INSERT INTO 
+                deleted_users 
+                (user_id, first_name, last_name, email, 
+                password, gender, verified, admin) 
+                VALUES (?,?,?,?,?,?,?,?)",
+        )
+        .bind(user.user_id)
+        .bind(user.first_name)
+        .bind(user.last_name)
+        .bind(user.email)
+        .bind(user.password)
+        .bind(user.gender)
+        .bind(user.verified)
+        .bind(user.admin)
+        .execute(&mut *db)
+        .await
+        {
+            Ok(_) => (),
+            Err(err) => return Err(format!("Failed to delete the user: {}", err)),
+        }
+
+    match query("DELETE FROM users WHERE user_id = ?")
+        .bind(user.user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete the user: {}", err)),
     }
 }
 
@@ -409,6 +452,115 @@ pub async fn get_session_by_token(
     };
 
     Ok(password_reset)
+}
+
+// Delete User
+
+#[derive(Debug, FromRow)]
+pub struct AccountDeleteRequestDB {
+    pub user_id: u32,
+    pub delete_token: String,
+    pub timestamp: i64,
+    pub valid_until: i64,
+}
+
+pub async fn deletion_in_progress(db: &mut SqliteConnection, user_id: u32) -> Result<bool, String> {
+    match query("SELECT user_id FROM delete_requests WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(val) => match val {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        },
+        Err(_) => Err("Failed to perform a database query".to_owned()),
+    }
+}
+
+pub async fn start_delete(
+    db: &mut SqliteConnection,
+    user_id: u32,
+    token: &str,
+) -> Result<(), String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs();
+
+    match query(
+        "INSERT INTO 
+                delete_requests
+                (user_id, delete_token, timestamp, valid_until) 
+                VALUES (?,?,?,?,?)",
+    )
+    .bind(user_id)
+    .bind(token)
+    .bind(timestamp as i64)
+    .bind(timestamp as i64 + 300)
+    .execute(db)
+    .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!(
+            "Failed to insert delete request into the database: {}",
+            err
+        )),
+    }
+}
+
+pub async fn get_delete_request_by_token(
+    db: &mut SqliteConnection,
+    token: &str,
+) -> Result<AccountDeleteRequestDB, String> {
+    let delete_request: AccountDeleteRequestDB =
+        match query_as("SELECT * FROM delete_requests WHERE delete_token = ?")
+            .bind(token)
+            .fetch_optional(db)
+            .await
+        {
+            Ok(row) => match row {
+                Some(val) => val,
+                None => return Err("Delete request not found".to_owned()),
+            },
+            Err(err) => return Err(format!("Failed to get delete request by token: {}", err)),
+        };
+
+    Ok(delete_request)
+}
+
+pub async fn get_delete_request_by_user_id(
+    db: &mut SqliteConnection,
+    user_id: u32,
+) -> Result<AccountDeleteRequestDB, String> {
+    let delete_request: AccountDeleteRequestDB =
+        match query_as("SELECT * FROM delete_requests WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await
+        {
+            Ok(row) => match row {
+                Some(val) => val,
+                None => return Err("Delete request not found".to_owned()),
+            },
+            Err(err) => return Err(format!("Failed to get delete request by token: {}", err)),
+        };
+
+    Ok(delete_request)
+}
+
+pub async fn remove_delete_request_by_user_id(
+    db: &mut SqliteConnection,
+    user_id: u32,
+) -> Result<(), String> {
+    match query("DELETE FROM delete_requests user_id = ?")
+        .bind(user_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete delete_request: {}", err)),
+    }
 }
 
 // ██████╗  █████╗ ███████╗███████╗██╗    ██╗ ██████╗ ██████╗ ██████╗     ██████╗ ███████╗███████╗███████╗████████╗
