@@ -5,6 +5,7 @@ use rocket_db_pools::{Database, Pool};
 #[macro_use]
 extern crate rocket;
 
+pub mod admin;
 pub mod db;
 pub mod user;
 
@@ -42,6 +43,31 @@ fn rocket() -> _ {
                 user::verifyless_updates::user_modify_password,
                 user::update_email::user_modify_email,
                 user::update_email::user_modify_email_verify,
+                admin::character::admin_characters_add,
+                admin::character::admin_characters_delete,
+                admin::character::admin_characters_get,
+                admin::dialogue::admin_dialogues_add,
+                admin::dialogue::admin_dialogues_delete,
+                admin::dialogue::admin_dialogues_get,
+                admin::dialogue::admin_dialogues_get_unused,
+                admin::task::admin_tasks_location_add,
+                admin::task::admin_tasks_multiple_choice_add,
+                admin::task::admin_tasks_text_answer_add,
+                admin::task::admin_tasks_get,
+                admin::task::admin_tasks_get_unused,
+                admin::quest::admin_quests_add,
+                admin::quest::admin_quests_delete,
+                admin::quest::admin_quests_get,
+                admin::quest::admin_quests_duplicate,
+                admin::quest::admin_quests_stages_add,
+                admin::quest::admin_quests_stages_delete,
+                admin::quest::admin_quests_stages_get,
+                admin::quest::admin_quests_stages_move_back,
+                admin::quest::admin_quests_stages_move_forward,
+                admin::game::admin_game_pause,
+                admin::game::admin_game_unpause,
+                admin::game::admin_game_set_location_radius,
+                admin::game::admin_quests_select_tutorial,
             ],
         )
 }

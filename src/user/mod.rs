@@ -37,7 +37,7 @@ pub struct UserDB {
     pub admin: bool,
 }
 
-async fn email_taken<'a>(db: &mut SqliteConnection, email: &'a str) -> Result<bool, &'a str> {
+async fn email_taken(db: &mut SqliteConnection, email: &str) -> Result<bool, String> {
     match query("SELECT user_id FROM users WHERE ? = email")
         .bind(email)
         .fetch_optional(db)
@@ -47,11 +47,11 @@ async fn email_taken<'a>(db: &mut SqliteConnection, email: &'a str) -> Result<bo
             Some(_) => Ok(true),
             None => Ok(false),
         },
-        Err(_) => Err("Failed to perform a database query"),
+        Err(_) => Err("Failed to perform a database query".to_owned()),
     }
 }
 
-async fn next_user_id<'a>(db: &mut SqliteConnection) -> Result<u32, &'a str> {
+async fn next_user_id(db: &mut SqliteConnection) -> Result<u32, String> {
     match query("SELECT MAX(user_id) FROM users")
         .fetch_optional(db)
         .await
@@ -59,11 +59,11 @@ async fn next_user_id<'a>(db: &mut SqliteConnection) -> Result<u32, &'a str> {
         Ok(val) => match val {
             Some(row) => match row.try_get::<u32, _>(0) {
                 Ok(id) => Ok(id + 1),
-                Err(_) => Err("Database error"),
+                Err(_) => Err("Database error".to_owned()),
             },
             None => Ok(1),
         },
-        Err(_) => Err("Failed to perform a database query"),
+        Err(_) => Err("Failed to perform a database query".to_owned()),
     }
 }
 
