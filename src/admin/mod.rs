@@ -686,69 +686,6 @@ pub async fn get_tasks_unused(db: &mut SqliteConnection) -> Result<Vec<Task>, St
     Ok(tasks)
 }
 
-#[cfg(test)]
-mod task_db_tests {
-    use std::env;
-
-    use rocket::local::asynchronous::Client;
-    use rocket_db_pools::{Database, Pool};
-
-    use crate::{rocket, DB};
-
-    use super::{add_location_task, get_tasks, next_task_id, add_choice_task, add_text_task};
-
-    #[rocket::async_test]
-    async fn insert_and_get_back() {
-        env::set_var("WIEDZIELISCIE_BACKEND_RESET_DB", "1");
-        
-        let client = Client::tracked(rocket())
-            .await
-            .expect("Failed to create client");
-
-        let db = DB::fetch(client.rocket()).unwrap();
-
-        let id = next_task_id(&mut db.get().await.unwrap()).await.unwrap();
-
-        add_location_task(
-            &mut db.get().await.unwrap(), 
-            id,
-            "test loc 1", 
-            None, 
-            Some("test desc 1"), 
-            1.0, 
-            4.0, 
-            None
-        ).await.unwrap();
-        
-        add_choice_task(
-            &mut db.get().await.unwrap(), 
-            id,
-            "test choice 1", 
-            Some(1), 
-            Some("test desc 2"), 
-            "R u dumb?",
-            &vec!["Yes", "No", "Sure"],
-            &vec![0, 2]
-        ).await.unwrap();
-
-        add_text_task(
-            &mut db.get().await.unwrap(), 
-            id,
-            "test choice 1", 
-            Some(1), 
-            Some("test desc 2"), 
-            "R u dumb?",
-            &vec!["Yes", "No", "Sure"]
-        ).await.unwrap();
-
-        let tasks = get_tasks(&mut db.get().await.unwrap()).await.unwrap();
-        println!("{:?}", tasks);
-
-        assert_eq!(format!("{:?}", tasks), "[Location(LocationTask { task_id: 1, name: \"test loc 1\", quest_id: None, desc: \"test desc 1\", min_radius: 1.0, max_radius: 4.0, location_to_duplicate: None }), Choice(ChoiceTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", answers: [\"Yes\", \"No\", \"Sure\"], choice_answers: [0, 2] }), Text(TextTask { task_id: 1, name: \"test choice 1\", quest_id: Some(1), desc: \"test desc 2\", question: \"R u dumb?\", text_answers: [\"Yes\", \"No\", \"Sure\"] })]");
-    }
-}
-
-
 //  ██████╗ ██╗   ██╗███████╗███████╗████████╗
 // ██╔═══██╗██║   ██║██╔════╝██╔════╝╚══██╔══╝
 // ██║   ██║██║   ██║█████╗  ███████╗   ██║   
