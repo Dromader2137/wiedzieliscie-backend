@@ -16,8 +16,8 @@ use crate::{
 
 use super::{
     add_quest_stage, change_quest_stage_id_back, change_quest_stage_id_forward, create_quest,
-    delete_quest, delete_quest_stage, get_all_quest_stages, get_all_quests, next_quest_id,
-    next_quest_stage_id, QuestStageContent,
+    delete_quest, delete_quest_stage, get_all_quest_stages, get_all_quests, get_quest_by_id,
+    next_quest_id, next_quest_stage_id, QuestStageContent,
 };
 
 #[derive(Debug, Deserialize)]
@@ -455,7 +455,6 @@ pub async fn admin_quests_delete(
 #[serde(crate = "rocket::serde")]
 pub struct QuestGetData<'r> {
     jwt: &'r str,
-    quest_id: u32,
 }
 
 #[post("/admin/quests/get", format = "json", data = "<data>")]
@@ -503,4 +502,78 @@ pub async fn admin_quests_get(
     };
 
     (Status::Ok, json!(quests))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct QuestDuplicateData<'r> {
+    jwt: &'r str,
+    quest_id: u32,
+}
+
+#[post("/admin/quests/duplicate", format = "json", data = "<data>")]
+pub async fn admin_quests_duplicate(
+    mut db: Connection<DB>,
+    data: Json<QuestDuplicateData<'_>>,
+) -> (Status, Value) {
+    let claims = match verify_token(data.jwt) {
+        Ok(val) => val.claims,
+        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
+    };
+
+    let user_id = claims.uid;
+    let session_token = claims.token;
+
+    let user = match get_user_by_id(&mut db, user_id).await {
+        Ok(val) => val,
+        Err(err) => return (Status::BadRequest, json!({"error": err})),
+    };
+
+    if !user.admin {
+        return (
+            Status::BadRequest,
+            json!({"error": "account_id and token are different"}),
+        );
+    }
+
+    let sessions = match get_session_by_token(&mut db, &session_token).await {
+        Ok(val) => val,
+        Err(err) => return (Status::BadRequest, json!({"error": err})),
+    };
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time")
+        .as_secs() as i64;
+
+    if timestamp > sessions.valid_until {
+        return (Status::BadRequest, json!({"error": "token expired"}));
+    }
+
+    let quest_id = match next_quest_id(&mut db).await {
+        Ok(val) => val,
+        Err(err) => return (Status::InternalServerError, json!({"error": err})),
+    };
+
+    let quest = match get_quest_by_id(&mut db, data.quest_id).await {
+        Ok(val) => val,
+        Err(err) => return (Status::InternalServerError, json!({"error": err})),
+    };
+
+    if let Err(err) = create_quest(
+        &mut db,
+        quest_id,
+        &quest.name,
+        &quest.desc,
+        &quest.unlocks,
+        quest.points,
+        quest.points,
+        &quest.rewards,
+    )
+    .await
+    {
+        return (Status::InternalServerError, json!({"error": err}));
+    }
+
+    (Status::Ok, json!({}))
 }

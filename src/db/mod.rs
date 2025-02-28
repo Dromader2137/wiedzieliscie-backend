@@ -375,6 +375,50 @@ async fn create_quest_stage_table(db: &mut SqliteConnection) -> Result<(), Strin
     }
 }
 
+async fn create_game_table(db: &mut SqliteConnection) -> Result<(), String> {
+    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        if var.to_lowercase() == "true" || var == "1" {
+            query("DROP TABLE game").execute(&mut *db).await.ok();
+        }
+    }
+
+    if let Err(err) = query(
+        "CREATE TABLE game (
+        paused bool,
+        location_radius real,
+        tutorial_id int
+    )",
+    )
+    .execute(db)
+    .await
+    {
+        if &format!("{}", err)
+            != "error returned from database: (code: 1) table game already exists"
+        {
+            return Err(format!("Failed to create quest_stages table: {}", err));
+        }
+    };
+
+    Ok(())
+}
+
+async fn prepare_game_table(db: &mut SqliteConnection) -> Result<(), String> {
+    if let Ok(_) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        return Ok(());
+    }
+
+    if let Err(err) = query("INSERT INTO game (paused, location_radius) VALUES (?, ?)")
+        .bind(false)
+        .bind(10.0)
+        .execute(db)
+        .await
+    {
+        return Err(format!("Failed to prepare game table: {}", err));
+    };
+
+    Ok(())
+}
+
 pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_user_table(&mut db).await.unwrap();
     create_verification_table(&mut db).await.unwrap();
@@ -387,4 +431,6 @@ pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_task_table(&mut db).await.unwrap();
     create_quest_table(&mut db).await.unwrap();
     create_quest_stage_table(&mut db).await.unwrap();
+    create_game_table(&mut db).await.unwrap();
+    prepare_game_table(&mut db).await.unwrap();
 }

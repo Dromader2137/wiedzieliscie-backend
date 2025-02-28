@@ -2,6 +2,7 @@ pub mod character;
 pub mod dialogue;
 pub mod task;
 pub mod quest;
+pub mod game;
 
 use rocket::serde::Serialize;
 use sqlx::{prelude::FromRow, query, query_as, Row, SqliteConnection};
@@ -874,6 +875,27 @@ pub async fn get_all_quests(db: &mut SqliteConnection) -> Result<Vec<Quest>, Str
     }).collect())
 }
 
+pub async fn get_quest_by_id(db: &mut SqliteConnection, id: u32) -> Result<Quest, String> {
+    let rows = match query_as::<_, QuestRow>("SELECT * FROM quests WHERE quest_id = ?")
+        .bind(id)
+        .fetch_all(db)
+        .await
+    {
+        Ok(val) => val,
+        Err(err) => return Err(format!("Failed to get quests: {}", err)),
+    };
+
+    if let Some(row) = rows.first() {
+        Ok(
+            Quest::from(row)
+        )
+    } else {
+        Err(
+            "Quest not found".to_string()
+        )
+    }
+}
+
 //  ██████╗ ██╗   ██╗███████╗███████╗████████╗    ███████╗████████╗ █████╗  ██████╗ ███████╗
 // ██╔═══██╗██║   ██║██╔════╝██╔════╝╚══██╔══╝    ██╔════╝╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝
 // ██║   ██║██║   ██║█████╗  ███████╗   ██║       ███████╗   ██║   ███████║██║  ███╗█████╗  
@@ -1038,5 +1060,47 @@ pub async fn change_quest_stage_id_back(db: &mut SqliteConnection, quest_id: u32
     {
         Ok(_) => Ok(()),
         Err(err) => Err(format!("Failed to change quest stage ids: {}", err))
+    }
+}
+
+
+//  ██████╗  █████╗ ███╗   ███╗███████╗
+// ██╔════╝ ██╔══██╗████╗ ████║██╔════╝
+// ██║  ███╗███████║██╔████╔██║█████╗  
+// ██║   ██║██╔══██║██║╚██╔╝██║██╔══╝  
+// ╚██████╔╝██║  ██║██║ ╚═╝ ██║███████╗
+//  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝
+
+
+pub async fn game_set_state(db: &mut SqliteConnection, paused: bool) -> Result<(), String> {
+    match query("UPDATE game SET paused = ?")
+        .bind(paused)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to set game state: {}", err))
+    }
+}
+
+pub async fn game_set_tutorial(db: &mut SqliteConnection, quest_id: u32) -> Result<(), String> {
+    match query("UPDATE game SET tutorial_id = ?")
+        .bind(quest_id)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to set tutorial: {}", err))
+    }
+}
+
+pub async fn game_set_location_radius(db: &mut SqliteConnection, r: f32) -> Result<(), String> {
+    match query("UPDATE game SET location_radius = ?")
+        .bind(r)
+        .execute(db)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to set location radius: {}", err))
     }
 }
