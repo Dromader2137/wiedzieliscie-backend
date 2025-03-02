@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use rocket::{
     http::Status,
     serde::{
@@ -9,10 +7,7 @@ use rocket::{
 };
 use rocket_db_pools::Connection;
 
-use crate::{
-    user::{get_session_by_token, get_user_by_id, jwt::verify_token},
-    DB,
-};
+use crate::{util::check_authorized_admin, DB};
 
 use super::{
     add_quest_stage, change_quest_stage_id_back, change_quest_stage_id_forward, create_quest,
@@ -37,38 +32,8 @@ pub async fn admin_quests_add(
     mut db: Connection<DB>,
     data: Json<QuestAddData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     let quest_id = match next_quest_id(&mut db).await {
@@ -108,38 +73,8 @@ pub async fn admin_quests_stages_add(
     mut db: Connection<DB>,
     data: Json<QuestStageAddData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     let quest_stage_id = match next_quest_stage_id(&mut db, data.quest_id).await {
@@ -187,38 +122,8 @@ pub async fn admin_quests_stages_delete(
     mut db: Connection<DB>,
     data: Json<QuestStageDeleteData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     if let Err(err) = delete_quest_stage(&mut db, data.quest_id, data.position).await {
@@ -240,38 +145,8 @@ pub async fn admin_quests_stages_get(
     mut db: Connection<DB>,
     data: Json<QuestStageGetData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     let quests = match get_all_quest_stages(&mut db, data.quest_id).await {
@@ -295,38 +170,8 @@ pub async fn admin_quests_stages_move_back(
     mut db: Connection<DB>,
     data: Json<QuestStageMoveBackData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     if data.position == 0 {
@@ -353,42 +198,20 @@ pub async fn admin_quests_stages_move_forward(
     mut db: Connection<DB>,
     data: Json<QuestStageMoveForwardData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
+    }
 
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
+    let quest_stage_id = match next_quest_stage_id(&mut db, data.quest_id).await {
         Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
+        Err(err) => return (Status::InternalServerError, json!({"error": err})),
     };
 
-    if !user.admin {
+    if data.position == quest_stage_id - 1 {
         return (
             Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
+            json!({"error": "position can't be max"}),
         );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
-    }
-
-    if data.position == 0 {
-        return (Status::BadRequest, json!({"error": "position can't be 0"}));
     }
 
     if let Err(err) = change_quest_stage_id_forward(&mut db, data.quest_id, data.position).await {
@@ -410,38 +233,8 @@ pub async fn admin_quests_delete(
     mut db: Connection<DB>,
     data: Json<QuestDeleteData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     if let Err(err) = delete_quest(&mut db, data.quest_id).await {
@@ -462,38 +255,8 @@ pub async fn admin_quests_get(
     mut db: Connection<DB>,
     data: Json<QuestGetData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     let quests = match get_all_quests(&mut db).await {
@@ -516,38 +279,8 @@ pub async fn admin_quests_duplicate(
     mut db: Connection<DB>,
     data: Json<QuestDuplicateData<'_>>,
 ) -> (Status, Value) {
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time")
-        .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
+    if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
+        return err;
     }
 
     let quest_id = match next_quest_id(&mut db).await {
