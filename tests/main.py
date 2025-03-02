@@ -5,6 +5,7 @@ import json
 import time
 import socket
 import sqlite3
+import re
 
 addr = ""
 port = 0
@@ -31,6 +32,14 @@ def expect(t, n, a, b):
         print(f"{t}: Expected {n} to be {b}, but it is {a}")
         stop = True
 
+def expect_pattern(t, n, a, b):
+    global stop
+    if stop:
+        print(f"{t}: {n} is {a}")
+    elif re.search(b, a) == None:
+        print(f"{t}: Expected {n} to contain {b}, but it is {a}")
+        stop = True
+
 def test_register():
     register_url = f"http://{addr}:{port}/auth/register"
     register_data = {
@@ -53,22 +62,24 @@ def test_register():
     conn = sqlite3.connect("db.sqlite")
     cur = conn.cursor()
 
-    cur.execute("SELECT verification_token FROM verifications WHERE user_id = ?", response["account_id"])
+    cur.execute("SELECT verification_token FROM verifications WHERE user_id = ?", str(response["account_id"]))
     rows = cur.fetchall()
-    ver_token = str(rows[0])
+    ver_token = rows[0][0]
+
+    verify_url = f"http://{addr}:{port}/auth/verify/{ver_token}"
+    verify_response = requests.get(verify_url)
     
-    verify_url = f"http://{addr}:{port}/"
-    
+    expect_pattern("register", "verify_response", verify_response.text, ".*successful.*")
 
     pass
 
 set_env()
 
 tests = [
-    test_register
+    (test_register, "Register and verify")
 ]
 
-for test in tests:
+for (test, i) in tests:
     instance = subprocess.Popen(["cargo", "run"], 
                                 stdout=subprocess.DEVNULL, 
                                 stderr=subprocess.DEVNULL, 
@@ -79,7 +90,8 @@ for test in tests:
     test()
     instance.kill()
     if stop:
+        print(f"{i}: Error")
         break
     else:
-        print("ok")
+        print(f"{i}: Ok")
 
