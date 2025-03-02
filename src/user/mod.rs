@@ -265,7 +265,7 @@ pub async fn retrieve_user_by_email(
     db: &mut SqliteConnection,
     email: &str,
 ) -> Result<User, String> {
-    let user: User = match query_as("SELECT users.user_id, users.email, users.first_name, users.last_name, users.gender, 0 FROM users WHERE users.email = ?")
+    let user: User = match query_as("SELECT users.user_id as account_id, users.email, users.first_name, users.last_name, users.gender, 0 as points FROM users WHERE users.email = ?")
         .bind(email)
         .fetch_optional(db)
         .await
@@ -281,7 +281,7 @@ pub async fn retrieve_user_by_email(
 }
 
 pub async fn retrieve_user_by_id(db: &mut SqliteConnection, id: u32) -> Result<User, String> {
-    let user: User = match query_as("SELECT users.user_id, users.email, users.first_name, users.last_name, users.gender, 0 FROM users WHERE users.user_id = ?")
+    let user: User = match query_as("SELECT users.user_id as account_id, users.email, users.first_name, users.last_name, users.gender, 0 as points FROM users WHERE users.user_id = ?")
         .bind(id)
         .fetch_optional(db)
         .await
@@ -301,7 +301,7 @@ pub async fn retrieve_user_by_names(
     first_name: &str,
     last_name: &str,
 ) -> Result<User, String> {
-    let user: User = match query_as("SELECT users.user_id, users.email, users.first_name, users.last_name, users.gender, 0 FROM users WHERE users.first_name = ? AND users.last_name = ?")
+    let user: User = match query_as("SELECT users.user_id as account_id, users.email, users.first_name, users.last_name, users.gender, 0 as points FROM users WHERE users.first_name = ? AND users.last_name = ?")
         .bind(first_name)
         .bind(last_name)
         .fetch_optional(db)

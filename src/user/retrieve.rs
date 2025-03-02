@@ -94,7 +94,7 @@ pub async fn user_retrieve_email(
                 }),
             )
         }
-        Err(_) => (Status::NotFound, json!({})),
+        Err(err) => (Status::NotFound, json!(err)),
     }
 }
 
@@ -119,7 +119,8 @@ pub async fn user_retrieve_id(
                     "email": user.email,
                     "first_name": user.first_name,
                     "last_name": user.last_name,
-                    "gender": gender
+                    "gender": gender,
+                    "points": user.points
                 }),
             )
         }
@@ -149,7 +150,8 @@ pub async fn user_retrieve_name(
                     "email": user.email,
                     "first_name": user.first_name,
                     "last_name": user.last_name,
-                    "gender": gender
+                    "gender": gender,
+                    "points": user.points
                 }),
             )
         }
