@@ -93,7 +93,7 @@ def test_register_resend():
     resend_url = f"http://{addr}:{port}/auth/resend_verification/1"
     resend_response = requests.post(resend_url)
 
-    expect("resend", "verify_response", resend_response.status_code, 400)
+    expect("resend", "status", resend_response.status_code, 400)
 
 def test_login():
     test_register()
@@ -110,7 +110,7 @@ def test_login():
     login_request = requests.post(login_url, json=login_data)
     status = login_request.status_code
     expect("login", "status", status, 200)
-    expect_pattern("login", "account_id", login_request.text, "{\"jwt\":.*")
+    expect_pattern("login", "jwt", login_request.text, "{\"jwt\":.*")
 
     response = json.loads(login_request.text)
     return response["jwt"]
@@ -129,6 +129,131 @@ def test_logout():
     status = logout_request.status_code
     expect("logout", "status", status, 200)
 
+def test_retrieve_user():
+    jwt = test_login()
+
+    if stop:
+        return
+
+    retrieve_url = f"http://{addr}:{port}/auth/retrieve_user"
+    retrieve_data = {
+        "jwt": jwt,
+    }
+    retrieve_response = requests.post(retrieve_url, json=retrieve_data)
+    response = json.loads(retrieve_response.text)
+    user_data = {
+        "account_id": 1,
+        "email": "user.mail.1@user.io",
+        "first_name": "user",
+        "last_name": "number1",
+        "gender": "m",
+    }
+    expect("retrieve", "response", response, user_data)
+
+def test_password_reset():
+    test_register()
+
+    if stop:
+        return
+
+    reset_url = f"http://{addr}:{port}/auth/password_reset"
+    reset_data = {
+        "email": "user.mail.1@user.io",
+        "plaintext_password": "new_pass"
+    }
+    reset_response = requests.post(reset_url, json=reset_data)
+    expect("reset", "status", reset_response.status_code, 200)
+    
+    conn = sqlite3.connect("db.sqlite")
+    cur = conn.cursor()
+
+    cur.execute("SELECT reset_token FROM password_resets WHERE user_id = ?", "1")
+    rows = cur.fetchall()
+    res_token = rows[0][0]
+
+    verify_url = f"http://{addr}:{port}/auth/password_reset/verify/{res_token}"
+    verify_response = requests.get(verify_url)
+
+    expect_pattern("reset", "verify_response", verify_response.text, ".*successful.*")
+
+def test_retrieve_user_email():
+    test_register()
+
+    if stop:
+        return
+
+    retrieve_url = f"http://{addr}:{port}/user/retrieve/email"
+    retrieve_data = {
+        "email": "user.mail.1@user.io",
+    }
+    retrieve_response = requests.post(retrieve_url, json=retrieve_data)
+    response = json.loads(retrieve_response.text)
+    user_data = {
+        "account_id": 1,
+        "email": "user.mail.1@user.io",
+        "first_name": "user",
+        "last_name": "number1",
+        "gender": "m",
+        "points": 0
+    }
+    expect("retrieve", "response", response, user_data)
+
+def test_retrieve_user_id():
+    test_register()
+
+    if stop:
+        return
+
+    retrieve_url = f"http://{addr}:{port}/user/retrieve/id"
+    retrieve_data = {
+        "account_id": 1
+    }
+    retrieve_response = requests.post(retrieve_url, json=retrieve_data)
+    response = json.loads(retrieve_response.text)
+    user_data = {
+        "account_id": 1,
+        "email": "user.mail.1@user.io",
+        "first_name": "user",
+        "last_name": "number1",
+        "gender": "m",
+        "points": 0
+    }
+    expect("retrieve", "response", response, user_data)
+
+def test_retrieve_user_name():
+    test_register()
+
+    if stop:
+        return
+
+    retrieve_url = f"http://{addr}:{port}/user/retrieve/name"
+    retrieve_data = {
+        "first_name": "user",
+        "last_name": "number1"
+    }
+    retrieve_response = requests.post(retrieve_url, json=retrieve_data)
+    response = json.loads(retrieve_response.text)
+    user_data = {
+        "account_id": 1,
+        "email": "user.mail.1@user.io",
+        "first_name": "user",
+        "last_name": "number1",
+        "gender": "m",
+        "points": 0
+    }
+    expect("retrieve", "response", response, user_data)
+
+def test_retrieve_user_count():
+    test_register()
+
+    if stop:
+        return
+
+    retrieve_url = f"http://{addr}:{port}/user/retrieve/count"
+    retrieve_response = requests.get(retrieve_url)
+    response = json.loads(retrieve_response.text)
+    user_data = 1
+    expect("retrieve", "response", response, user_data)
 
 set_env()
 
@@ -136,7 +261,13 @@ tests = [
     (test_register, "Register and verify"),
     (test_register_resend, "Register resend"),
     (test_login, "Login"),
-    (test_logout, "Logout")
+    (test_logout, "Logout"),
+    (test_retrieve_user, "Retrieve user"),
+    (test_password_reset, "Password reset"),
+    (test_retrieve_user_email, "Retrieve user email"),
+    (test_retrieve_user_name, "Retrieve user name"),
+    (test_retrieve_user_id, "Retrieve user id"),
+    (test_retrieve_user_count, "Retrieve user count"),
 ]
 
 for (test, i) in tests:
