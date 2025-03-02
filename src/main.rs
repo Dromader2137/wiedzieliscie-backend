@@ -78,6 +78,10 @@ fn rocket() -> _ {
                 fetch::get::get_location_radius,
                 fetch::get::get_pause_state,
                 fetch::get::get_character,
+                user::retrieve::user_retrieve_email,
+                user::retrieve::user_retrieve_id,
+                user::retrieve::user_retrieve_name,
+                user::retrieve::user_retrieve_count,
             ],
         )
 }

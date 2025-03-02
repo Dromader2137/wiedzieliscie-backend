@@ -11,7 +11,10 @@ use rocket_db_pools::Connection;
 
 use crate::DB;
 
-use super::{get_session_by_token, get_user_by_id, jwt::verify_token};
+use super::{
+    get_session_by_token, get_user_by_email, get_user_by_id, jwt::verify_token, next_user_id,
+    retrieve_user_by_email, retrieve_user_by_id, retrieve_user_by_names,
+};
 
 #[derive(Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -63,4 +66,101 @@ pub async fn auth_retrieve_user(
             "gender": gender
         }),
     )
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct RetrieveUserEmailData<'r> {
+    email: &'r str,
+}
+
+#[post("/user/retrieve/email", format = "json", data = "<data>")]
+pub async fn user_retrieve_email(
+    mut db: Connection<DB>,
+    data: Json<RetrieveUserEmailData<'_>>,
+) -> (Status, Value) {
+    match retrieve_user_by_email(&mut db, data.email).await {
+        Ok(user) => {
+            let gender = if user.gender { "m" } else { "f" };
+            (
+                Status::Ok,
+                json!({
+                    "account_id": user.account_id,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "gender": gender,
+                    "points": user.points
+                }),
+            )
+        }
+        Err(_) => (Status::NotFound, json!({})),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct RetrieveUserIdData {
+    account_id: u32,
+}
+
+#[post("/user/retrieve/id", format = "json", data = "<data>")]
+pub async fn user_retrieve_id(
+    mut db: Connection<DB>,
+    data: Json<RetrieveUserIdData>,
+) -> (Status, Value) {
+    match retrieve_user_by_id(&mut db, data.account_id).await {
+        Ok(user) => {
+            let gender = if user.gender { "m" } else { "f" };
+            (
+                Status::Ok,
+                json!({
+                    "account_id": user.account_id,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "gender": gender
+                }),
+            )
+        }
+        Err(_) => (Status::NotFound, json!({})),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct RetrieveUserNamesData<'r> {
+    first_name: &'r str,
+    last_name: &'r str,
+}
+
+#[post("/user/retrieve/name", format = "json", data = "<data>")]
+pub async fn user_retrieve_name(
+    mut db: Connection<DB>,
+    data: Json<RetrieveUserNamesData<'_>>,
+) -> (Status, Value) {
+    match retrieve_user_by_names(&mut db, data.first_name, data.last_name).await {
+        Ok(user) => {
+            let gender = if user.gender { "m" } else { "f" };
+            (
+                Status::Ok,
+                json!({
+                    "account_id": user.account_id,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "gender": gender
+                }),
+            )
+        }
+        Err(_) => (Status::NotFound, json!({})),
+    }
+}
+
+#[get("/user/retrieve/count")]
+pub async fn user_retrieve_count(mut db: Connection<DB>) -> (Status, Value) {
+    match next_user_id(&mut db).await {
+        Ok(user) => (Status::Ok, json!(user - 1)),
+        Err(_) => (Status::NotFound, json!({})),
+    }
 }

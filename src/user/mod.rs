@@ -1,7 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rocket::serde::Serialize;
 use sqlx::{prelude::FromRow, query, query_as, Row, SqliteConnection};
 
+pub mod delete_user;
 pub mod jwt;
 pub mod login;
 pub mod logout;
@@ -10,7 +12,6 @@ pub mod reset;
 pub mod retrieve;
 pub mod update_email;
 pub mod verifyless_updates;
-pub mod delete_user;
 
 // ██████╗  █████╗ ████████╗ █████╗ ██████╗  █████╗ ███████╗███████╗    ███████╗██╗   ██╗███╗   ██╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗███████╗
 // ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔════╝    ██╔════╝██║   ██║████╗  ██║██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
@@ -36,6 +37,17 @@ pub struct UserDB {
     pub gender: bool,
     pub verified: bool,
     pub admin: bool,
+}
+
+#[derive(Debug, FromRow, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct User {
+    pub account_id: u32,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub gender: bool,
+    pub points: u32,
 }
 
 async fn email_taken(db: &mut SqliteConnection, email: &str) -> Result<bool, String> {
@@ -179,10 +191,7 @@ pub async fn update_user_email(
     }
 }
 
-pub async fn delete_user_db(
-    db: &mut SqliteConnection,
-    user_id: u32
-) -> Result<(), String> {
+pub async fn delete_user_db(db: &mut SqliteConnection, user_id: u32) -> Result<(), String> {
     let user: UserDB = match get_user_by_id(db, user_id).await {
         Ok(val) => val,
         Err(err) => return Err(format!("Failed to get user: {}", err)),
@@ -195,21 +204,21 @@ pub async fn delete_user_db(
                 (user_id, first_name, last_name, email, 
                 password, gender, verified, admin) 
                 VALUES (?,?,?,?,?,?,?,?)",
-        )
-        .bind(user.user_id)
-        .bind(user.first_name)
-        .bind(user.last_name)
-        .bind(user.email)
-        .bind(user.password)
-        .bind(user.gender)
-        .bind(user.verified)
-        .bind(user.admin)
-        .execute(&mut *db)
-        .await
-        {
-            Ok(_) => (),
-            Err(err) => return Err(format!("Failed to delete the user: {}", err)),
-        }
+    )
+    .bind(user.user_id)
+    .bind(user.first_name)
+    .bind(user.last_name)
+    .bind(user.email)
+    .bind(user.password)
+    .bind(user.gender)
+    .bind(user.verified)
+    .bind(user.admin)
+    .execute(&mut *db)
+    .await
+    {
+        Ok(_) => (),
+        Err(err) => return Err(format!("Failed to delete the user: {}", err)),
+    }
 
     match query("DELETE FROM users WHERE user_id = ?")
         .bind(user.user_id)
@@ -250,6 +259,62 @@ pub async fn update_user_name_or_gender(
     } else {
         Err("Invalid field".to_owned())
     }
+}
+
+pub async fn retrieve_user_by_email(
+    db: &mut SqliteConnection,
+    email: &str,
+) -> Result<User, String> {
+    let user: User = match query_as("SELECT users.user_id, users.email, users.first_name, users.last_name, users.gender, 0 FROM users WHERE users.email = ?")
+        .bind(email)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(row) => match row {
+            Some(val) => val,
+            None => return Err("User not found".to_owned()),
+        },
+        Err(err) => return Err(format!("Failed to get user by email: {}", err)),
+    };
+
+    Ok(user)
+}
+
+pub async fn retrieve_user_by_id(db: &mut SqliteConnection, id: u32) -> Result<User, String> {
+    let user: User = match query_as("SELECT users.user_id, users.email, users.first_name, users.last_name, users.gender, 0 FROM users WHERE users.user_id = ?")
+        .bind(id)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(row) => match row {
+            Some(val) => val,
+            None => return Err("User not found".to_owned()),
+        },
+        Err(err) => return Err(format!("Failed to get user by email: {}", err)),
+    };
+
+    Ok(user)
+}
+
+pub async fn retrieve_user_by_names(
+    db: &mut SqliteConnection,
+    first_name: &str,
+    last_name: &str,
+) -> Result<User, String> {
+    let user: User = match query_as("SELECT users.user_id, users.email, users.first_name, users.last_name, users.gender, 0 FROM users WHERE users.first_name = ? AND users.last_name = ?")
+        .bind(first_name)
+        .bind(last_name)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(row) => match row {
+            Some(val) => val,
+            None => return Err("User not found".to_owned()),
+        },
+        Err(err) => return Err(format!("Failed to get user by email: {}", err)),
+    };
+
+    Ok(user)
 }
 
 // ██╗   ██╗███████╗██████╗ ██╗███████╗██╗ ██████╗ █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
