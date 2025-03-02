@@ -93,7 +93,7 @@ def test_register_resend():
     resend_url = f"http://{addr}:{port}/auth/resend_verification/1"
     resend_response = requests.post(resend_url)
 
-    expect("register", "verify_response", resend_response.status_code, 400)
+    expect("resend", "verify_response", resend_response.status_code, 400)
 
 def test_login():
     test_register()
@@ -109,15 +109,34 @@ def test_login():
     }
     login_request = requests.post(login_url, json=login_data)
     status = login_request.status_code
-    expect("register", "status", status, 200)
-    expect_pattern("register", "account_id", login_request.text, "{\"jwt\":.*")
+    expect("login", "status", status, 200)
+    expect_pattern("login", "account_id", login_request.text, "{\"jwt\":.*")
+
+    response = json.loads(login_request.text)
+    return response["jwt"]
+
+def test_logout():
+    jwt = test_login()
+    
+    if stop:
+        return
+
+    logout_url = f"http://{addr}:{port}/auth/logout"
+    logout_data = {
+        "jwt": jwt,
+    }
+    logout_request = requests.post(logout_url, json=logout_data)
+    status = logout_request.status_code
+    expect("logout", "status", status, 200)
+
 
 set_env()
 
 tests = [
     (test_register, "Register and verify"),
     (test_register_resend, "Register resend"),
-    (test_login, "Login")
+    (test_login, "Login"),
+    (test_logout, "Logout")
 ]
 
 for (test, i) in tests:
