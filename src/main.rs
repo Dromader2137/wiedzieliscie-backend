@@ -8,6 +8,7 @@ extern crate rocket;
 pub mod admin;
 pub mod db;
 pub mod error;
+pub mod fetch;
 pub mod user;
 
 #[derive(Database)]
@@ -72,6 +73,9 @@ fn rocket() -> _ {
                 error::report::report_error,
                 error::report::report_suggestion,
                 error::report::admin_get_reports,
+                fetch::get::get_location_radius,
+                fetch::get::get_pause_state,
+                fetch::get::get_character,
             ],
         )
 }
