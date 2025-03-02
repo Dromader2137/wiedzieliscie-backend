@@ -58,7 +58,7 @@ def test_register():
     global stop
     if stop:
         return
-   
+
     conn = sqlite3.connect("db.sqlite")
     cur = conn.cursor()
 
@@ -68,15 +68,56 @@ def test_register():
 
     verify_url = f"http://{addr}:{port}/auth/verify/{ver_token}"
     verify_response = requests.get(verify_url)
-    
+
     expect_pattern("register", "verify_response", verify_response.text, ".*successful.*")
 
-    pass
+def test_register_resend():
+    register_url = f"http://{addr}:{port}/auth/register"
+    register_data = {
+        "email": "user.mail.1@user.io",
+        "plaintext_password": "user_1_passwd",
+        "first_name": "user",
+        "last_name": "number1",
+        "gender": "m"
+    }
+    register_request = requests.post(register_url, json=register_data)
+    status = register_request.status_code
+    response = json.loads(register_request.text)
+    expect("register", "status", status, 201)
+    expect("register", "account_id", response, {"account_id": 1})
+
+    global stop
+    if stop:
+        return
+
+    resend_url = f"http://{addr}:{port}/auth/resend_verification/1"
+    resend_response = requests.post(resend_url)
+
+    expect("register", "verify_response", resend_response.status_code, 400)
+
+def test_login():
+    test_register()
+
+    global stop
+    if stop:
+        return
+    
+    login_url = f"http://{addr}:{port}/auth/login"
+    login_data = {
+        "email": "user.mail.1@user.io",
+        "plaintext_password": "user_1_passwd",
+    }
+    login_request = requests.post(login_url, json=login_data)
+    status = login_request.status_code
+    expect("register", "status", status, 200)
+    expect_pattern("register", "account_id", login_request.text, "{\"jwt\":.*")
 
 set_env()
 
 tests = [
-    (test_register, "Register and verify")
+    (test_register, "Register and verify"),
+    (test_register_resend, "Register resend"),
+    (test_login, "Login")
 ]
 
 for (test, i) in tests:
@@ -89,6 +130,7 @@ for (test, i) in tests:
         time.sleep(0.1)
     test()
     instance.kill()
+    instance.wait()
     if stop:
         print(f"{i}: Error")
         break
