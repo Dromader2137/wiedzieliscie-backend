@@ -15,10 +15,14 @@ use rocket::{
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
-use crate::{user::{delete_user_db, get_delete_request_by_token, get_user_by_id}, DB};
+use crate::{
+    user::{delete_user_db, get_delete_request_by_token, get_user_by_id},
+    DB,
+};
 
 use super::{
-    deletion_in_progress, get_delete_request_by_user_id, get_user_by_email, remove_delete_request_by_user_id, start_delete
+    deletion_in_progress, get_delete_request_by_user_id, get_user_by_email,
+    remove_delete_request_by_user_id, start_delete,
 };
 
 #[derive(Deserialize)]
@@ -59,10 +63,7 @@ async fn send_delete_user_email(email: &str, delete_token: &str) -> Result<(), S
 }
 
 #[post("/auth/delete_user", format = "json", data = "<data>")]
-pub async fn delete_user(
-    mut db: Connection<DB>,
-    data: Json<DeleteData<'_>>,
-) -> (Status, Value) {
+pub async fn delete_user(mut db: Connection<DB>, data: Json<DeleteData<'_>>) -> (Status, Value) {
     let user = match get_user_by_email(&mut db, data.email).await {
         Ok(val) => val,
         Err(_) => return (Status::BadRequest, json!({"error": "User not found"})),
@@ -87,7 +88,10 @@ pub async fn delete_user(
                         _ => {}
                     }
                 } else {
-                    return (Status::BadRequest, json!({"error": "account deletion in progress"}));
+                    return (
+                        Status::BadRequest,
+                        json!({"error": "account deletion in progress"}),
+                    );
                 }
             }
         }
@@ -96,7 +100,7 @@ pub async fn delete_user(
 
     let token = Uuid::new_v4().to_string();
 
-    if let Err(err) = start_delete(&mut db, user.user_id,  &token).await {
+    if let Err(err) = start_delete(&mut db, user.user_id, &token).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
 
@@ -160,4 +164,3 @@ pub async fn auth_password_reset_verify(mut db: Connection<DB>, token: &str) -> 
         &"You can now close this page",
     ))
 }
-

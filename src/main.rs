@@ -10,6 +10,7 @@ pub mod db;
 pub mod error;
 pub mod fetch;
 pub mod user;
+pub mod util;
 
 #[derive(Database)]
 #[database("db")]

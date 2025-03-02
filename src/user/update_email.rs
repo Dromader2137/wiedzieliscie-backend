@@ -15,12 +15,12 @@ use rocket::{
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
-use crate::DB;
+use crate::{util::check_authorized_user_or_admin, DB};
 
 use super::{
     email_update_in_progress, get_email_update_by_token, get_email_update_by_user_id,
-    get_session_by_token, get_user_by_id, jwt::verify_token, remove_email_updates_by_user_id,
-    start_email_update, stop_all_sessions, update_user_email,
+    get_user_by_id, jwt::verify_token, remove_email_updates_by_user_id, start_email_update,
+    stop_all_sessions, update_user_email,
 };
 
 #[derive(Deserialize)]
@@ -67,39 +67,20 @@ pub async fn user_modify_email(
     mut db: Connection<DB>,
     data: Json<ResetData<'_>>,
 ) -> (Status, Value) {
+    if let Some(err) = check_authorized_user_or_admin(&mut db, data.jwt, data.account_id).await {
+        return err;
+    }
+
     let claims = match verify_token(data.jwt) {
         Ok(val) => val.claims,
         Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
     };
-
     let user_id = claims.uid;
-    let session_token = claims.token;
-
-    let user = match get_user_by_id(&mut db, user_id).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
-
-    if user_id != data.account_id && !user.admin {
-        return (
-            Status::BadRequest,
-            json!({"error": "account_id and token are different"}),
-        );
-    }
-
-    let sessions = match get_session_by_token(&mut db, &session_token).await {
-        Ok(val) => val,
-        Err(err) => return (Status::BadRequest, json!({"error": err})),
-    };
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time")
         .as_secs() as i64;
-
-    if timestamp > sessions.valid_until {
-        return (Status::BadRequest, json!({"error": "token expired"}));
-    }
 
     match email_update_in_progress(&mut db, user_id).await {
         Ok(val) => {
