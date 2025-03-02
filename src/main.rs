@@ -73,6 +73,7 @@ fn rocket() -> _ {
                 error::report::report_error,
                 error::report::report_suggestion,
                 error::report::admin_get_reports,
+                error::report::admin_get_logs,
                 fetch::get::get_location_radius,
                 fetch::get::get_pause_state,
                 fetch::get::get_character,
