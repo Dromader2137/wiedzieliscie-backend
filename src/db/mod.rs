@@ -491,6 +491,61 @@ async fn prepare_game_table(db: &mut SqliteConnection) -> Result<(), String> {
     Ok(())
 }
 
+async fn create_error_report_table(db: &mut SqliteConnection) -> Result<(), String> {
+    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        if var.to_lowercase() == "true" || var == "1" {
+            query("DROP TABLE error_report")
+                .execute(&mut *db)
+                .await
+                .ok();
+        }
+    }
+
+    if let Err(err) = query(
+        "CREATE TABLE error_report (
+        title varchar(65536),
+        message varchar(65536)
+    )",
+    )
+    .execute(db)
+    .await
+    {
+        if &format!("{}", err)
+            != "error returned from database: (code: 1) table error_report already exists"
+        {
+            return Err(format!("Failed to create quest_stages table: {}", err));
+        }
+    };
+
+    Ok(())
+}
+
+async fn create_suggestion_table(db: &mut SqliteConnection) -> Result<(), String> {
+    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        if var.to_lowercase() == "true" || var == "1" {
+            query("DROP TABLE suggestion").execute(&mut *db).await.ok();
+        }
+    }
+
+    if let Err(err) = query(
+        "CREATE TABLE suggestion (
+        title varchar(65536),
+        message varchar(65536)
+    )",
+    )
+    .execute(db)
+    .await
+    {
+        if &format!("{}", err)
+            != "error returned from database: (code: 1) table suggestion already exists"
+        {
+            return Err(format!("Failed to create quest_stages table: {}", err));
+        }
+    };
+
+    Ok(())
+}
+
 pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     create_user_table(&mut db).await.unwrap();
     create_verification_table(&mut db).await.unwrap();
@@ -507,4 +562,6 @@ pub async fn create_tables(mut db: PoolConnection<Sqlite>) {
     prepare_game_table(&mut db).await.unwrap();
     create_deleted_user_table(&mut db).await.unwrap();
     create_delete_request_table(&mut db).await.unwrap();
+    create_error_report_table(&mut db).await.unwrap();
+    create_suggestion_table(&mut db).await.unwrap();
 }

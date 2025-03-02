@@ -7,6 +7,7 @@ extern crate rocket;
 
 pub mod admin;
 pub mod db;
+pub mod error;
 pub mod user;
 
 #[derive(Database)]
@@ -68,6 +69,9 @@ fn rocket() -> _ {
                 admin::game::admin_game_unpause,
                 admin::game::admin_game_set_location_radius,
                 admin::game::admin_quests_select_tutorial,
+                error::report::report_error,
+                error::report::report_suggestion,
+                error::report::admin_get_reports,
             ],
         )
 }
