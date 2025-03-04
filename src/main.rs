@@ -18,6 +18,7 @@ pub struct DB(sqlx::SqlitePool);
 
 #[launch]
 fn rocket() -> _ {
+    util::load_env().unwrap();
     let db = DB::init();
     rocket::build()
         .attach(db)

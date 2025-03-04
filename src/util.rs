@@ -10,6 +10,7 @@ use rocket::{
     serde::json::{json, Value},
 };
 use rocket_db_pools::Connection;
+use std::{fs::File, io::Read};
 
 pub async fn check_authorized_user(
     mut db: &mut Connection<DB>,
@@ -122,4 +123,24 @@ pub async fn check_authorized_user_or_admin(
     }
 
     None
+}
+
+pub fn load_env() -> Result<(), String> {
+    let mut env_file = match File::open(".env") {
+        Ok(val) => val,
+        Err(err) => return Err(err.to_string())
+    };
+
+    let mut env = String::new();
+    if let Err(err) = env_file.read_to_string(&mut env) {
+        return Err(err.to_string());
+    }
+
+    let vars: Vec<_> = env.lines().filter_map(|x| x.split_once(" ")).collect();
+    
+    for (var, val) in vars.iter() {
+        std::env::set_var(var, val);
+    }
+
+    Ok(())
 }

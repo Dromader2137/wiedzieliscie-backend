@@ -1,4 +1,3 @@
-import os
 import requests
 import subprocess
 import json
@@ -14,14 +13,13 @@ def set_env():
     env_file = open(".env")
     env_txt = env_file.read().strip()
     env_vars = env_txt.split("\n")
+    env = {}
     for env_var in env_vars:
         [var_name, var_value] = env_var.strip().split(" ")
-        print(f"Setting {var_name} to {var_value}")
-        os.environ[var_name] = var_value
-        global env
+        env[var_name] = var_value
     global addr, port
-    addr = os.environ["WIEDZIELISCIE_BACKEND_URL"].split(":")[0]
-    port = int(os.environ["WIEDZIELISCIE_BACKEND_URL"].split(":")[1])
+    addr = env["WIEDZIELISCIE_BACKEND_URL"].split(":")[0]
+    port = int(env["WIEDZIELISCIE_BACKEND_URL"].split(":")[1])
 
 stop = False
 def expect(t, n, a, b):
@@ -273,8 +271,7 @@ tests = [
 for (test, i) in tests:
     instance = subprocess.Popen(["cargo", "run"], 
                                 stdout=subprocess.DEVNULL, 
-                                stderr=subprocess.DEVNULL, 
-                                env=os.environ)
+                                stderr=subprocess.DEVNULL)
     sock = socket.socket()
     while sock.connect_ex((addr, port)) != 0:
         time.sleep(0.1)
