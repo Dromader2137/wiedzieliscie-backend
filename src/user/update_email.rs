@@ -15,7 +15,7 @@ use rocket::{
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
-use crate::{util::check_authorized_user_or_admin, DB};
+use crate::{util::{check_authorized_admin, check_authorized_user_or_admin, is_paused}, DB};
 
 use super::{
     email_update_in_progress, get_email_update_by_token, get_email_update_by_user_id,
@@ -67,6 +67,10 @@ pub async fn user_modify_email(
     mut db: Connection<DB>,
     data: Json<ResetData<'_>>,
 ) -> (Status, Value) {
+    if is_paused(&mut db).await && check_authorized_admin(&mut db, data.jwt).await.is_some() {
+        return (Status::Unauthorized, json!({"error": "Game paused and user isn't admin"}))
+    }
+
     if let Some(err) = check_authorized_user_or_admin(&mut db, data.jwt, data.account_id).await {
         return err;
     }
@@ -77,6 +81,11 @@ pub async fn user_modify_email(
     };
     let user_id = claims.uid;
 
+    let user = match get_user_by_id(&mut db, user_id).await {
+        Ok(val) => val,
+        Err(err) => return (Status::BadRequest, json!({"error": err})),
+    };
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time")
@@ -85,13 +94,13 @@ pub async fn user_modify_email(
     match email_update_in_progress(&mut db, user_id).await {
         Ok(val) => {
             if val {
-                let update = match get_email_update_by_user_id(&mut db, user_id).await {
+                let update = match get_email_update_by_user_id(&mut db, data.account_id).await {
                     Ok(update) => update,
                     Err(err) => return (Status::InternalServerError, json!({"error": err})),
                 };
 
                 if timestamp > update.valid_until {
-                    match remove_email_updates_by_user_id(&mut db, user_id).await {
+                    match remove_email_updates_by_user_id(&mut db, data.account_id).await {
                         Err(err) => return (Status::InternalServerError, json!({"error": err})),
                         _ => {}
                     }
@@ -103,14 +112,24 @@ pub async fn user_modify_email(
         Err(err) => return (Status::InternalServerError, json!({"error": err})),
     }
 
-    let token = Uuid::new_v4().to_string();
+    if user.admin && data.account_id != user_id {
+        if let Err(err) = stop_all_sessions(&mut db, data.account_id).await {
+            RawHtml(get_email_update_page(&"Email update failed", &err));
+        }
 
-    if let Err(err) = start_email_update(&mut db, user_id, data.new_value, &token).await {
-        return (Status::InternalServerError, json!({"error": err}));
-    }
+        if let Err(err) = update_user_email(&mut db, data.account_id, data.new_value).await {
+            RawHtml(get_email_update_page(&"Email update failed", &err));
+        }
+    } else {
+        let token = Uuid::new_v4().to_string();
 
-    if let Err(err) = send_email_update_email(data.new_value, &token).await {
-        return (Status::InternalServerError, json!({"error": err}));
+        if let Err(err) = start_email_update(&mut db, user_id, data.new_value, &token).await {
+            return (Status::InternalServerError, json!({"error": err}));
+        }
+
+        if let Err(err) = send_email_update_email(data.new_value, &token).await {
+            return (Status::InternalServerError, json!({"error": err}));
+        }
     }
 
     (Status::Ok, json!({}))

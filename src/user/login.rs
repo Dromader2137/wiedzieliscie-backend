@@ -8,7 +8,7 @@ use rocket::{
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
-use crate::DB;
+use crate::{util::is_paused, DB};
 
 use super::{get_session_count, get_user_by_email, jwt::get_token, start_session};
 
@@ -26,6 +26,10 @@ pub async fn auth_login(mut db: Connection<DB>, data: Json<LoginData<'_>>) -> (S
         Err(err) => return (Status::BadRequest, json!({"error": err})),
     };
 
+    if is_paused(&mut db).await && !user.admin {
+        return (Status::Unauthorized, json!({"error": "Game paused and user isn't admin"}))
+    }
+    
     if !user.verified {
         return (Status::BadRequest, json!({"error": "User not verified"}));
     }

@@ -16,8 +16,7 @@ use rocket_db_pools::Connection;
 use uuid::Uuid;
 
 use crate::{
-    user::{delete_user_db, get_delete_request_by_token, get_user_by_id},
-    DB,
+    user::{delete_user_db, get_delete_request_by_token, get_user_by_id}, util::is_paused, DB
 };
 
 use super::{
@@ -64,6 +63,10 @@ async fn send_delete_user_email(email: &str, delete_token: &str) -> Result<(), S
 
 #[post("/auth/delete_user", format = "json", data = "<data>")]
 pub async fn delete_user(mut db: Connection<DB>, data: Json<DeleteData<'_>>) -> (Status, Value) {
+    if is_paused(&mut db).await {
+        return (Status::Unauthorized, json!({"error": "Game paused"}))
+    }
+
     let user = match get_user_by_email(&mut db, data.email).await {
         Ok(val) => val,
         Err(_) => return (Status::BadRequest, json!({"error": "User not found"})),
@@ -131,8 +134,6 @@ pub fn get_delete_user_page(title: &str, message: &str) -> String {
 
 #[get("/auth/delete_user/verify/<token>")]
 pub async fn auth_password_reset_verify(mut db: Connection<DB>, token: &str) -> RawHtml<String> {
-    println!("DELETE USER");
-
     let reset = match get_delete_request_by_token(&mut db, token).await {
         Ok(val) => val,
         Err(err) => return RawHtml(get_delete_user_page(&"Password reset failed", &err)),

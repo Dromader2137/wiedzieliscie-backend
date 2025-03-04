@@ -1,4 +1,4 @@
-use std::env;
+use std::env::{self, VarError};
 
 use sqlx::{pool::PoolConnection, query, Sqlite, SqliteConnection};
 
@@ -475,18 +475,18 @@ async fn create_game_table(db: &mut SqliteConnection) -> Result<(), String> {
 }
 
 async fn prepare_game_table(db: &mut SqliteConnection) -> Result<(), String> {
-    if let Ok(_) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
-        return Ok(());
+    if let Ok(var) = env::var("WIEDZIELISCIE_BACKEND_RESET_DB") {
+        if var.to_lowercase() == "true" || var == "1" {
+            if let Err(err) = query("INSERT INTO game (paused, location_radius) VALUES (?, ?)")
+                .bind(false)
+                .bind(10.0)
+                .execute(db)
+                .await
+            {
+                return Err(format!("Failed to prepare game table: {}", err));
+            };
+        }
     }
-
-    if let Err(err) = query("INSERT INTO game (paused, location_radius) VALUES (?, ?)")
-        .bind(false)
-        .bind(10.0)
-        .execute(db)
-        .await
-    {
-        return Err(format!("Failed to prepare game table: {}", err));
-    };
 
     Ok(())
 }

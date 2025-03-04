@@ -15,7 +15,7 @@ use rocket::{
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
-use crate::DB;
+use crate::{util::is_paused, DB};
 
 use super::{
     get_reset_by_token, get_reset_by_user_id, get_user_by_email, get_user_by_id,
@@ -66,6 +66,10 @@ pub async fn auth_password_reset(
     mut db: Connection<DB>,
     data: Json<ResetData<'_>>,
 ) -> (Status, Value) {
+    if is_paused(&mut db).await {
+        return (Status::Unauthorized, json!({"error": "Game paused"}))
+    }
+
     let user = match get_user_by_email(&mut db, &data.email).await {
         Ok(val) => val,
         Err(_) => return (Status::BadRequest, json!({"error": "User not found"})),

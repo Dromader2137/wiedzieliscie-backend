@@ -7,10 +7,10 @@ use rocket::{
 };
 use rocket_db_pools::Connection;
 
-use crate::{util::check_authorized_user_or_admin, DB};
+use crate::{util::{check_authorized_admin, check_authorized_user_or_admin, is_paused}, DB};
 
 use super::{
-    jwt::verify_token, stop_all_sessions, update_user_name_or_gender, update_user_password,
+    stop_all_sessions, update_user_name_or_gender, update_user_password,
 };
 
 #[derive(Deserialize)]
@@ -26,6 +26,10 @@ pub async fn user_modify_first_name(
     mut db: Connection<DB>,
     data: Json<SimpleModifyData<'_>>,
 ) -> (Status, Value) {
+    if is_paused(&mut db).await && check_authorized_admin(&mut db, data.jwt).await.is_some() {
+        return (Status::Unauthorized, json!({"error": "Game paused and user isn't admin"}))
+    }
+
     if let Some(err) = check_authorized_user_or_admin(&mut db, data.jwt, data.account_id).await {
         return err;
     }
@@ -44,6 +48,10 @@ pub async fn user_modify_last_name(
     mut db: Connection<DB>,
     data: Json<SimpleModifyData<'_>>,
 ) -> (Status, Value) {
+    if is_paused(&mut db).await && check_authorized_admin(&mut db, data.jwt).await.is_some() {
+        return (Status::Unauthorized, json!({"error": "Game paused and user isn't admin"}))
+    }
+
     if let Some(err) = check_authorized_user_or_admin(&mut db, data.jwt, data.account_id).await {
         return err;
     }
@@ -62,6 +70,10 @@ pub async fn user_modify_gender(
     mut db: Connection<DB>,
     data: Json<SimpleModifyData<'_>>,
 ) -> (Status, Value) {
+    if is_paused(&mut db).await && check_authorized_admin(&mut db, data.jwt).await.is_some() {
+        return (Status::Unauthorized, json!({"error": "Game paused and user isn't admin"}))
+    }
+
     if data.new_value != "m" && data.new_value != "f" {
         return (Status::BadRequest, json!({"error": "invalid new value"}));
     }
@@ -84,22 +96,19 @@ pub async fn user_modify_password(
     mut db: Connection<DB>,
     data: Json<SimpleModifyData<'_>>,
 ) -> (Status, Value) {
+    if is_paused(&mut db).await && check_authorized_admin(&mut db, data.jwt).await.is_some() {
+        return (Status::Unauthorized, json!({"error": "Game paused and user isn't admin"}))
+    }
+
     if let Some(err) = check_authorized_user_or_admin(&mut db, data.jwt, data.account_id).await {
         return err;
     }
-
-    let claims = match verify_token(data.jwt) {
-        Ok(val) => val.claims,
-        Err(_) => return (Status::BadRequest, json!({"error": "invalid token"})),
-    };
-
-    let user_id = claims.uid;
 
     if let Err(err) = update_user_password(&mut db, data.account_id, data.new_value).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
 
-    if let Err(err) = stop_all_sessions(&mut db, user_id).await {
+    if let Err(err) = stop_all_sessions(&mut db, data.account_id).await {
         return (Status::InternalServerError, json!({"error": err}));
     }
 

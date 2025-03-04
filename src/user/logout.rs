@@ -9,7 +9,7 @@ use rocket::{
 };
 use rocket_db_pools::Connection;
 
-use crate::DB;
+use crate::{util::is_paused, DB};
 
 use super::{get_session_by_token, get_user_by_id, jwt::verify_token, stop_session};
 

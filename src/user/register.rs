@@ -15,7 +15,7 @@ use rocket::{
 use rocket_db_pools::Connection;
 use uuid::Uuid;
 
-use crate::DB;
+use crate::{util::is_paused, DB};
 
 use super::{
     add_verification, create_user, email_taken, get_user_by_id, get_verification_by_id,
@@ -69,6 +69,10 @@ pub async fn auth_register(
     mut db: Connection<DB>,
     data: Json<RegisterData<'_>>,
 ) -> (Status, Value) {
+    if is_paused(&mut db).await {
+        return (Status::Unauthorized, json!({"error": "Game paused"}))
+    }
+
     let data = data.into_inner();
 
     match email_taken(&mut db, data.email).await {
@@ -114,6 +118,10 @@ pub async fn auth_register(
 
 #[post("/auth/resend_verification/<account_id>")]
 pub async fn auth_resend_verification(mut db: Connection<DB>, account_id: u32) -> (Status, Value) {
+    if is_paused(&mut db).await {
+        return (Status::Unauthorized, json!({"error": "Game paused"}))
+    }
+
     let user = match get_user_by_id(&mut db, account_id).await {
         Ok(val) => val,
         Err(err) => return (Status::NotFound, json!({"error": err})),

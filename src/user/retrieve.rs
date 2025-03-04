@@ -9,7 +9,7 @@ use rocket::{
 };
 use rocket_db_pools::Connection;
 
-use crate::DB;
+use crate::{util::is_paused, DB};
 
 use super::{
     get_session_by_token, get_user_by_email, get_user_by_id, jwt::verify_token, next_user_id,
@@ -39,6 +39,11 @@ pub async fn auth_retrieve_user(
         Ok(val) => val,
         Err(_) => return (Status::BadRequest, json!({"error": "user not found"})),
     };
+    
+    if is_paused(&mut db).await && !user.admin {
+        return (Status::Unauthorized, json!({"error": "Game paused and user is not admin"}))
+    }
+
 
     let sessions = match get_session_by_token(&mut db, &session_token).await {
         Ok(val) => val,

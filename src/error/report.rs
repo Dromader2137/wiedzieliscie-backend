@@ -8,7 +8,7 @@ use rocket::{
 use rocket_db_pools::Connection;
 
 use crate::{
-    util::{check_authorized_admin, check_authorized_user},
+    util::{check_authorized_admin, check_authorized_user, is_paused},
     DB,
 };
 
@@ -27,6 +27,10 @@ pub async fn admin_get_reports(
 ) -> (Status, Value) {
     if let Some(err) = check_authorized_admin(&mut db, data.jwt).await {
         return err;
+    }
+
+    if is_paused(&mut db).await {
+        return (Status::Unauthorized, json!({"error": "Game paused"}))
     }
 
     let reports = match get_reports(&mut db).await {

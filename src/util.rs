@@ -10,6 +10,7 @@ use rocket::{
     serde::json::{json, Value},
 };
 use rocket_db_pools::Connection;
+use sqlx::{query, SqliteConnection, Row};
 use std::{fs::File, io::Read};
 
 pub async fn check_authorized_user(
@@ -123,6 +124,17 @@ pub async fn check_authorized_user_or_admin(
     }
 
     None
+}
+
+pub async fn is_paused(db: &mut SqliteConnection) -> bool {
+    match query("SELECT paused FROM game")
+        .fetch_one(db)
+        .await {
+        Ok(row) => {
+            row.try_get(0).unwrap_or(true)
+        },
+        Err(_) => true
+    }
 }
 
 pub fn load_env() -> Result<(), String> {
